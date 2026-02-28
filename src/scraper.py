@@ -134,8 +134,14 @@ def download_document_pdf(
     data = {
         "prodId": GALE_PROD_ID,
         "userGroupName": GALE_USER_GROUP,
+        "title": "",
         "downloadAction": "DO_DOWNLOAD_DOCUMENT",
+        "disclaimerDisabled": "false",
+        "asid": "",
+        "accessLevel": "",
+        "deliveryType": "DownLoad",
         "retrieveFormat": "PDF",
+        "productCode": "",
         "docId": doc_id,
         "_csrf": csrf_token,
     }
@@ -177,10 +183,17 @@ def download_document_text(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     data = {
+        "text": "",
+        "userGroupName": GALE_USER_GROUP,
+        "prodId": GALE_PROD_ID,
+        "fileName": "",
+        "downloadAction": "DO_DOWNLOAD_DOCUMENT",
+        "_csrf": csrf_token,
+        "accessLevel": "FULLTEXT",
+        "deliveryType": "DownLoad",
         "retrieveFormat": "PLAIN_TEXT",
         "productCode": GALE_PRODUCT_CODE,
         "docId": doc_id,
-        "accessLevel": "FULLTEXT",
     }
 
     try:
