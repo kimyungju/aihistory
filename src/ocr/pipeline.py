@@ -139,3 +139,45 @@ async def run_ocr_pipeline(
     print(f"[{volume_id}] OCR complete: {completed} done, {failed} failed")
 
     return manifest
+
+
+def download_images_from_gcs(volume_id: str, local_dir: Path) -> int:
+    """Download page images from GCS to local directory.
+
+    Uses lazy import to avoid protobuf issues on Python 3.14.
+    Skips files that already exist locally.
+    Returns count of files downloaded.
+    """
+    from src.gcs_upload import get_bucket
+    bucket = get_bucket()
+    prefix = f"{volume_id}/images/"
+
+    local_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for blob in bucket.list_blobs(prefix=prefix):
+        filename = blob.name.split("/")[-1]
+        if not filename:
+            continue
+        local_path = local_dir / filename
+        if not local_path.exists():
+            blob.download_to_filename(str(local_path))
+            count += 1
+    return count
+
+
+def upload_ocr_to_gcs(volume_id: str, ocr_dir: Path) -> int:
+    """Upload OCR results from local directory to GCS.
+
+    Uses lazy import to avoid protobuf issues on Python 3.14.
+    Returns count of files uploaded.
+    """
+    from src.gcs_upload import get_bucket, upload_file
+    bucket = get_bucket()
+    count = 0
+    for file_path in sorted(ocr_dir.rglob("*")):
+        if file_path.is_file():
+            relative = file_path.relative_to(ocr_dir)
+            gcs_path = f"{volume_id}/ocr/{relative.as_posix()}"
+            upload_file(bucket, file_path, gcs_path)
+            count += 1
+    return count
