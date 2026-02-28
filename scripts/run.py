@@ -2,55 +2,70 @@
 CLI entry point for aihistory scraper pipeline.
 
 Usage:
-    python -m scripts.run scrape [--resume]    # Auth + download pages
-    python -m scripts.run build                 # Combine pages into PDFs
-    python -m scripts.run upload                # Upload to GCS
-    python -m scripts.run all [--resume]        # Full pipeline
+    python -m scripts.run scrape [--resume] [--no-text] [--volume ID]
+    python -m scripts.run build [--volume ID]
+    python -m scripts.run upload
+    python -m scripts.run all [--resume] [--no-text] [--volume ID]
 """
 import argparse
-from pathlib import Path
 from src.config import VOLUMES, DOWNLOAD_DIR
 from src.auth import authenticate_gale
 from src.scraper import scrape_volume
-from src.pdf_builder import build_pdf_from_images
+from src.pdf_builder import merge_pdfs
 from src.gcs_upload import upload_all_volumes, list_bucket_contents
 
 
+def _get_volumes(args):
+    """Return volumes to process, filtered by --volume if specified."""
+    if hasattr(args, "volume") and args.volume:
+        if args.volume not in VOLUMES:
+            print(f"Unknown volume: {args.volume}")
+            print(f"Available: {', '.join(VOLUMES.keys())}")
+            raise SystemExit(1)
+        return {args.volume: VOLUMES[args.volume]}
+    return VOLUMES
+
+
 def cmd_scrape(args):
-    """Authenticate and download all volume pages."""
+    """Authenticate and download all documents for configured volumes."""
     print("=== Step 1: NUS SSO Authentication ===")
     session = authenticate_gale()
 
-    print("\n=== Step 2: Downloading pages ===")
-    for volume_id, vol_config in VOLUMES.items():
-        print(f"\nStarting {volume_id} ({vol_config['pages']} pages)...")
+    volumes = _get_volumes(args)
+    download_text = not args.no_text
+
+    print(f"\n=== Step 2: Downloading documents ({len(volumes)} volume(s)) ===")
+    for volume_id, vol_config in volumes.items():
+        print(f"\nStarting {volume_id}...")
         scrape_volume(
             session=session,
             volume_id=volume_id,
-            gale_id=vol_config["gale_id"],
-            total_pages=vol_config["pages"],
+            search_url=vol_config["search_url"],
             output_dir=DOWNLOAD_DIR,
             resume=args.resume,
+            download_text=download_text,
         )
 
     print("\n=== Scraping complete ===")
 
 
 def cmd_build(args):
-    """Combine downloaded page images into PDFs."""
-    print("=== Building PDFs ===")
-    for volume_id in VOLUMES:
-        pages_dir = DOWNLOAD_DIR / volume_id / "pages"
+    """Merge downloaded document PDFs into per-volume PDFs."""
+    print("=== Merging PDFs ===")
+    volumes = _get_volumes(args)
+
+    for volume_id in volumes:
+        docs_dir = DOWNLOAD_DIR / volume_id / "documents"
         output_pdf = DOWNLOAD_DIR / volume_id / f"{volume_id}_full.pdf"
 
-        if not pages_dir.exists():
-            print(f"Skipping {volume_id}: no pages directory found")
+        if not docs_dir.exists():
+            print(f"Skipping {volume_id}: no documents directory found")
             continue
 
-        print(f"\nBuilding {volume_id}...")
-        build_pdf_from_images(pages_dir, output_pdf)
+        print(f"\nMerging {volume_id}...")
+        merge_pdfs(docs_dir, output_pdf)
 
-    print("\n=== PDF build complete ===")
+    print("\n=== PDF merge complete ===")
 
 
 def cmd_upload(args):
@@ -79,12 +94,15 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # scrape
-    sp_scrape = subparsers.add_parser("scrape", help="Auth + download pages")
+    sp_scrape = subparsers.add_parser("scrape", help="Auth + download documents")
     sp_scrape.add_argument("--resume", action="store_true", help="Resume interrupted download")
+    sp_scrape.add_argument("--no-text", action="store_true", help="Skip OCR text downloads")
+    sp_scrape.add_argument("--volume", type=str, help="Scrape only this volume (e.g., CO273_534)")
     sp_scrape.set_defaults(func=cmd_scrape)
 
     # build
-    sp_build = subparsers.add_parser("build", help="Combine pages into PDFs")
+    sp_build = subparsers.add_parser("build", help="Merge document PDFs into volume PDFs")
+    sp_build.add_argument("--volume", type=str, help="Build only this volume")
     sp_build.set_defaults(func=cmd_build)
 
     # upload
@@ -94,6 +112,8 @@ def main():
     # all
     sp_all = subparsers.add_parser("all", help="Full pipeline")
     sp_all.add_argument("--resume", action="store_true", help="Resume interrupted download")
+    sp_all.add_argument("--no-text", action="store_true", help="Skip OCR text downloads")
+    sp_all.add_argument("--volume", type=str, help="Process only this volume")
     sp_all.set_defaults(func=cmd_all)
 
     args = parser.parse_args()

@@ -1,48 +1,44 @@
-# src/pdf_builder.py
 """
-Combine downloaded page images into a single PDF per volume.
+Merge downloaded document PDFs into a single per-volume PDF.
 """
 from pathlib import Path
-from PIL import Image
+from pypdf import PdfWriter
 
 
-def build_pdf_from_images(pages_dir: Path, output_path: Path) -> None:
+def merge_pdfs(pdf_dir: Path, output_path: Path) -> int:
     """
-    Combine all page images in a directory into a single PDF.
+    Merge all PDF files in a directory into a single PDF.
 
-    Images are sorted by filename to preserve page order.
-    Supports .jpg, .jpeg, .png, .tiff files.
+    PDFs are sorted by filename to maintain document order.
+
+    Args:
+        pdf_dir: Directory containing individual document PDFs
+        output_path: Path for the merged output PDF
+
+    Returns:
+        Total number of pages in the merged PDF
+
+    Raises:
+        FileNotFoundError: If pdf_dir doesn't exist or contains no PDFs
     """
-    image_extensions = {".jpg", ".jpeg", ".png", ".tiff", ".tif"}
-    image_files = sorted(
-        f for f in pages_dir.iterdir()
-        if f.suffix.lower() in image_extensions
-    )
+    if not pdf_dir.exists():
+        raise FileNotFoundError(f"Directory not found: {pdf_dir}")
 
-    if not image_files:
-        print(f"No images found in {pages_dir}")
-        return
+    pdf_files = sorted(f for f in pdf_dir.iterdir() if f.suffix.lower() == ".pdf")
+
+    if not pdf_files:
+        raise FileNotFoundError(f"No PDF files found in {pdf_dir}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Convert all images to RGB (required for PDF)
-    images = []
-    for img_path in image_files:
-        img = Image.open(img_path)
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        images.append(img)
+    writer = PdfWriter()
+    for pdf_path in pdf_files:
+        writer.append(str(pdf_path))
 
-    # Save first image as PDF, append the rest
-    first_image = images[0]
-    remaining = images[1:]
+    total_pages = len(writer.pages)
 
-    first_image.save(
-        str(output_path),
-        "PDF",
-        save_all=True,
-        append_images=remaining,
-        resolution=150.0,
-    )
+    with open(output_path, "wb") as f:
+        writer.write(f)
 
-    print(f"Built PDF: {output_path} ({len(images)} pages)")
+    print(f"Merged {len(pdf_files)} PDFs into {output_path} ({total_pages} pages)")
+    return total_pages

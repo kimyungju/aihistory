@@ -1,36 +1,217 @@
 # src/scraper.py
 """
-Download page images from Gale Primary Sources using authenticated requests.
+Download documents from Gale Primary Sources using authenticated requests.
 
-Requires session cookies from auth.py. Tracks progress via manifest.json
-to support resuming interrupted downloads.
+Uses Gale's PDF generator and text extraction endpoints to download
+entire multi-page documents in single requests. Tracks progress via
+manifest.json to support resuming interrupted downloads.
 """
 import json
+import re
 import time
 from pathlib import Path
+from urllib.parse import unquote, urljoin
+
 import requests
-from src.config import DOWNLOAD_DELAY, MAX_RETRIES, REQUEST_TIMEOUT
+from bs4 import BeautifulSoup
 
-
-# NOTE: Update this after API endpoint discovery in Task 3.
-# This is a placeholder pattern — replace with actual Gale endpoint.
-PAGE_URL_TEMPLATE = (
-    "https://go-gale-com.libproxy1.nus.edu.sg"
-    "/ps/i.do?id={gale_id}&page={page_num}&action=PageImage"
+from src.config import (
+    PDF_DOWNLOAD_URL,
+    TEXT_DOWNLOAD_URL,
+    GALE_PROD_ID,
+    GALE_PRODUCT_CODE,
+    GALE_USER_GROUP,
+    DOWNLOAD_DELAY,
+    MAX_RETRIES,
+    PDF_DOWNLOAD_TIMEOUT,
+    SEARCH_RESULTS_PER_PAGE,
 )
 
 
-def build_page_url(gale_id: str, page_num: int) -> str:
-    """Build the URL for a specific page image."""
-    return PAGE_URL_TEMPLATE.format(gale_id=gale_id, page_num=page_num)
+def sanitize_doc_id(doc_id: str) -> str:
+    """Convert 'GALE|LBYSJJ528199212' to 'GALE_LBYSJJ528199212' for filenames."""
+    return doc_id.replace("|", "_")
+
+
+def extract_csrf_token(session: requests.Session, url: str) -> str:
+    """Fetch a Gale page and extract the CSRF token.
+
+    Looks first for a hidden <input name="_csrf"> field in the HTML,
+    then falls back to the XSRF-TOKEN cookie.
+
+    Raises ValueError if neither source provides a token.
+    """
+    response = session.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # Try hidden input first
+    csrf_input = soup.find("input", {"name": "_csrf"})
+    if csrf_input and csrf_input.get("value"):
+        return csrf_input["value"]
+
+    # Fallback to XSRF-TOKEN cookie
+    cookie_token = session.cookies.get("XSRF-TOKEN")
+    if cookie_token:
+        return cookie_token
+
+    raise ValueError("CSRF token not found in HTML or cookies")
+
+
+def _extract_doc_ids_from_html(html: str) -> list[str]:
+    """Parse search results HTML and return decoded docIds."""
+    soup = BeautifulSoup(html, "html.parser")
+    doc_ids = []
+
+    for link in soup.find_all("a", href=True):
+        href = link["href"]
+        # Look for docId=GALE%7C... in href
+        match = re.search(r"docId=(GALE%7C[^&]+)", href)
+        if match:
+            doc_id = unquote(match.group(1))
+            if doc_id not in doc_ids:
+                doc_ids.append(doc_id)
+
+    return doc_ids
+
+
+def _extract_total_results(html: str) -> int:
+    """Extract total result count from pagination text like 'Results 1 - 25 of 50'."""
+    match = re.search(r"of\s+(\d+)", html)
+    if match:
+        return int(match.group(1))
+    return 0
+
+
+def discover_doc_ids(session: requests.Session, search_url: str) -> list[str]:
+    """Paginate Gale search results and extract all docIds from document links.
+
+    DocIds appear in href attributes containing 'docId=GALE%7C...'.
+    Detects total results from page text and follows pagination.
+    """
+    all_doc_ids: list[str] = []
+    current_url = search_url
+
+    while True:
+        response = session.get(current_url)
+        html = response.text
+
+        page_doc_ids = _extract_doc_ids_from_html(html)
+        all_doc_ids.extend(
+            did for did in page_doc_ids if did not in all_doc_ids
+        )
+
+        total = _extract_total_results(html)
+        if total == 0 or len(all_doc_ids) >= total:
+            break
+
+        # Build next page URL: increment page parameter
+        if "page=" in current_url:
+            current_page = int(re.search(r"page=(\d+)", current_url).group(1))
+            current_url = re.sub(
+                r"page=\d+", f"page={current_page + 1}", current_url
+            )
+        else:
+            sep = "&" if "?" in current_url else "?"
+            current_url = f"{current_url}{sep}page=2"
+
+    return all_doc_ids
+
+
+def download_document_pdf(
+    session: requests.Session,
+    doc_id: str,
+    csrf_token: str,
+    output_dir: Path,
+) -> bool:
+    """Download a document as PDF via Gale's PDF generator endpoint.
+
+    POSTs to PDF_DOWNLOAD_URL with required form data.
+    Saves as output_dir/{sanitized_doc_id}.pdf.
+    Returns True on success, False on failure.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data = {
+        "prodId": GALE_PROD_ID,
+        "userGroupName": GALE_USER_GROUP,
+        "downloadAction": "DO_DOWNLOAD_DOCUMENT",
+        "retrieveFormat": "PDF",
+        "docId": doc_id,
+        "_csrf": csrf_token,
+    }
+
+    try:
+        response = session.post(
+            PDF_DOWNLOAD_URL, data=data, timeout=PDF_DOWNLOAD_TIMEOUT
+        )
+        response.raise_for_status()
+
+        content_type = response.headers.get("Content-Type", "")
+        if "pdf" not in content_type and not response.content[:5] == b"%PDF-":
+            print(f"  Warning: unexpected Content-Type for {doc_id}: {content_type}")
+            return False
+
+        filename = f"{sanitize_doc_id(doc_id)}.pdf"
+        filepath = output_dir / filename
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+
+        return True
+
+    except Exception as e:
+        print(f"  Failed to download PDF for {doc_id}: {e}")
+        return False
+
+
+def download_document_text(
+    session: requests.Session,
+    doc_id: str,
+    csrf_token: str,
+    output_dir: Path,
+) -> bool:
+    """Download OCR text for a document via Gale's text extraction endpoint.
+
+    POSTs to TEXT_DOWNLOAD_URL with required form data.
+    Saves as output_dir/{sanitized_doc_id}.txt.
+    Returns True on success, False on failure.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data = {
+        "retrieveFormat": "PLAIN_TEXT",
+        "productCode": GALE_PRODUCT_CODE,
+        "docId": doc_id,
+        "accessLevel": "FULLTEXT",
+    }
+
+    try:
+        response = session.post(TEXT_DOWNLOAD_URL, data=data)
+        response.raise_for_status()
+
+        filename = f"{sanitize_doc_id(doc_id)}.txt"
+        filepath = output_dir / filename
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(response.text)
+
+        return True
+
+    except Exception as e:
+        print(f"  Failed to download text for {doc_id}: {e}")
+        return False
 
 
 def load_manifest(path: Path) -> dict:
-    """Load download manifest from JSON, or return empty manifest."""
+    """Load download manifest from JSON, or return empty manifest with new schema."""
     if path.exists():
         with open(path) as f:
             return json.load(f)
-    return {"downloaded": [], "failed": [], "total": 0}
+    return {
+        "volume_id": "",
+        "total_documents": 0,
+        "doc_ids": [],
+        "downloaded_pdfs": [],
+        "downloaded_texts": [],
+        "failed_pdfs": [],
+        "failed_texts": [],
+    }
 
 
 def save_manifest(path: Path, data: dict) -> None:
@@ -40,86 +221,105 @@ def save_manifest(path: Path, data: dict) -> None:
         json.dump(data, f, indent=2)
 
 
-def download_page(
-    session: requests.Session,
-    gale_id: str,
-    page_num: int,
-    output_dir: Path,
-) -> bool:
-    """
-    Download a single page image. Returns True on success, False on failure.
-    """
-    url = build_page_url(gale_id, page_num)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        response = session.get(url, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-
-        # Determine file extension from content type
-        content_type = response.headers.get("Content-Type", "image/jpeg")
-        ext = "pdf" if "pdf" in content_type else "jpg"
-        filename = f"page_{page_num:04d}.{ext}"
-
-        filepath = output_dir / filename
-        with open(filepath, "wb") as f:
-            f.write(response.content)
-
-        return True
-
-    except Exception as e:
-        print(f"  Failed to download page {page_num}: {e}")
-        return False
-
-
 def scrape_volume(
     session: requests.Session,
     volume_id: str,
-    gale_id: str,
-    total_pages: int,
+    search_url: str,
     output_dir: Path,
     resume: bool = True,
+    download_text: bool = True,
 ) -> dict:
-    """
-    Download all pages for a volume. Supports resume via manifest.
+    """Orchestrate the full download of a Gale volume.
 
-    Returns the final manifest dict.
+    Steps:
+    1. Extract CSRF token from search page
+    2. Discover all document IDs via paginated search
+    3. Download each document as PDF (and optionally text)
+    4. Track progress in manifest, saving after each download
+
+    Saves PDFs to output_dir/{volume_id}/documents/
+    Saves text to output_dir/{volume_id}/text/
     """
     volume_dir = output_dir / volume_id
-    volume_dir.mkdir(parents=True, exist_ok=True)
+    pdf_dir = volume_dir / "documents"
+    text_dir = volume_dir / "text"
     manifest_path = volume_dir / "manifest.json"
 
-    manifest = load_manifest(manifest_path) if resume else {
-        "downloaded": [], "failed": [], "total": total_pages,
-    }
-    manifest["total"] = total_pages
+    # Load or create manifest
+    if resume:
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = load_manifest(Path("/nonexistent"))  # fresh empty
 
-    already_downloaded = set(manifest["downloaded"])
+    manifest["volume_id"] = volume_id
 
-    for page_num in range(1, total_pages + 1):
-        if page_num in already_downloaded:
-            continue
+    # Step 1: extract CSRF
+    print(f"[{volume_id}] Extracting CSRF token...")
+    csrf_token = extract_csrf_token(session, search_url)
 
-        print(f"  [{volume_id}] Downloading page {page_num}/{total_pages}...")
+    # Step 2: discover doc IDs (or reuse from manifest if resuming)
+    if resume and manifest["doc_ids"]:
+        doc_ids = manifest["doc_ids"]
+        print(f"[{volume_id}] Resuming with {len(doc_ids)} known documents")
+    else:
+        print(f"[{volume_id}] Discovering document IDs...")
+        doc_ids = discover_doc_ids(session, search_url)
+        manifest["doc_ids"] = doc_ids
 
-        success = False
-        for attempt in range(1, MAX_RETRIES + 1):
-            if download_page(session, gale_id, page_num, volume_dir / "pages"):
-                success = True
-                break
-            print(f"    Retry {attempt}/{MAX_RETRIES}...")
+    manifest["total_documents"] = len(doc_ids)
+    save_manifest(manifest_path, manifest)
+    print(f"[{volume_id}] Found {len(doc_ids)} documents")
+
+    # Step 3: download each document
+    downloaded_pdfs = set(manifest["downloaded_pdfs"])
+    downloaded_texts = set(manifest["downloaded_texts"])
+
+    for i, doc_id in enumerate(doc_ids, 1):
+        # PDF download
+        if doc_id not in downloaded_pdfs:
+            print(f"  [{volume_id}] PDF {i}/{len(doc_ids)}: {doc_id}")
+            success = False
+            for attempt in range(1, MAX_RETRIES + 1):
+                if download_document_pdf(session, doc_id, csrf_token, pdf_dir):
+                    success = True
+                    break
+                if attempt < MAX_RETRIES:
+                    print(f"    Retry {attempt}/{MAX_RETRIES}...")
+                    time.sleep(DOWNLOAD_DELAY)
+
+            if success:
+                manifest["downloaded_pdfs"].append(doc_id)
+                downloaded_pdfs.add(doc_id)
+            elif doc_id not in manifest["failed_pdfs"]:
+                manifest["failed_pdfs"].append(doc_id)
+
+            save_manifest(manifest_path, manifest)
             time.sleep(DOWNLOAD_DELAY)
 
-        if success:
-            manifest["downloaded"].append(page_num)
-        else:
-            manifest["failed"].append(page_num)
+        # Text download
+        if download_text and doc_id not in downloaded_texts:
+            print(f"  [{volume_id}] Text {i}/{len(doc_ids)}: {doc_id}")
+            success = False
+            for attempt in range(1, MAX_RETRIES + 1):
+                if download_document_text(session, doc_id, csrf_token, text_dir):
+                    success = True
+                    break
+                if attempt < MAX_RETRIES:
+                    print(f"    Retry {attempt}/{MAX_RETRIES}...")
+                    time.sleep(DOWNLOAD_DELAY)
 
-        # Save progress after each page
-        save_manifest(manifest_path, manifest)
-        time.sleep(DOWNLOAD_DELAY)
+            if success:
+                manifest["downloaded_texts"].append(doc_id)
+                downloaded_texts.add(doc_id)
+            elif doc_id not in manifest["failed_texts"]:
+                manifest["failed_texts"].append(doc_id)
 
-    downloaded = len(manifest["downloaded"])
-    failed = len(manifest["failed"])
-    print(f"  [{volume_id}] Done: {downloaded} downloaded, {failed} failed")
+            save_manifest(manifest_path, manifest)
+            time.sleep(DOWNLOAD_DELAY)
+
+    pdfs = len(manifest["downloaded_pdfs"])
+    texts = len(manifest["downloaded_texts"])
+    fpdf = len(manifest["failed_pdfs"])
+    ftxt = len(manifest["failed_texts"])
+    print(f"[{volume_id}] Done: {pdfs} PDFs, {texts} texts, {fpdf} failed PDFs, {ftxt} failed texts")
     return manifest
