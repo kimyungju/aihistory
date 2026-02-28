@@ -44,7 +44,7 @@ def authenticate_gale() -> requests.Session:
     NUS SSO login including any 2FA steps.
     """
     options = Options()
-    # Not headless — user needs to see and interact with SSO
+    # Not headless -user needs to see and interact with SSO
     options.add_argument("--start-maximized")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -52,8 +52,8 @@ def authenticate_gale() -> requests.Session:
     driver = webdriver.Chrome(options=options)
 
     try:
-        # Navigate to Gale — will redirect through NUS SSO
-        print(f"Opening {GALE_BASE_URL} — please complete NUS SSO login...")
+        # Navigate to Gale -will redirect through NUS SSO
+        print(f"Opening {GALE_BASE_URL} -please complete NUS SSO login...")
         driver.get(GALE_BASE_URL)
 
         # Wait for user to complete login and land on Gale
