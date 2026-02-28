@@ -10,6 +10,9 @@ from src.scraper import (
     download_document_pdf,
     download_document_text,
     download_page_image,
+    get_document_data,
+    download_document_pages,
+    save_ocr_text,
     load_manifest,
     save_manifest,
 )
@@ -77,6 +80,40 @@ SAMPLE_SMALL_SEARCH_HTML = '''
 </body></html>
 '''
 
+# Sample dviViewer API response
+SAMPLE_DVI_RESPONSE = {
+    "imageList": [
+        {
+            "pageNumber": "1",
+            "recordId": "ENCODED_TOKEN_PAGE1",
+            "sourceRecordId": "SPOCF0001-C00040-M3001042-00010.jpg",
+            "x": 0, "y": 0, "width": 275, "height": 400,
+        },
+        {
+            "pageNumber": "2",
+            "recordId": "ENCODED_TOKEN_PAGE2",
+            "sourceRecordId": "SPOCF0001-C00040-M3001042-00020.jpg",
+            "x": 0, "y": 0, "width": 275, "height": 400,
+        },
+        {
+            "pageNumber": "3",
+            "recordId": "ENCODED_TOKEN_PAGE3",
+            "sourceRecordId": "SPOCF0001-C00040-M3001042-00030.jpg",
+            "x": 0, "y": 0, "width": 275, "height": 400,
+        },
+    ],
+    "originalDocument": {
+        "docId": "GALE|LBYSJJ528199212",
+        "pageOcrTextMap": {
+            "1": "Straits Settlements Original Correspondence page 1 text.",
+            "2": "More text on page 2 about trade and commerce.",
+            "3": "Final page with concluding remarks.",
+        },
+        "pdfRecordIds": ["rec1", "rec2", "rec3"],
+        "formatPdfRecordIdsForDviDownload": "rec1|rec2|rec3",
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # 1. test_sanitize_doc_id
@@ -86,7 +123,7 @@ def test_sanitize_doc_id():
     """Pipe character is replaced with underscore for safe filenames."""
     assert sanitize_doc_id("GALE|LBYSJJ528199212") == "GALE_LBYSJJ528199212"
     assert sanitize_doc_id("GALE|ABC") == "GALE_ABC"
-    # No pipe — unchanged
+    # No pipe -- unchanged
     assert sanitize_doc_id("NOPIPE") == "NOPIPE"
 
 
@@ -192,7 +229,7 @@ def test_discover_doc_ids_pagination():
 
 
 # ---------------------------------------------------------------------------
-# 7. test_download_document_pdf_success
+# 7. test_download_document_pdf_success (legacy)
 # ---------------------------------------------------------------------------
 
 def test_download_document_pdf_success(tmp_path):
@@ -222,7 +259,7 @@ def test_download_document_pdf_success(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 8. test_download_document_pdf_failure
+# 8. test_download_document_pdf_failure (legacy)
 # ---------------------------------------------------------------------------
 
 def test_download_document_pdf_failure(tmp_path):
@@ -237,7 +274,7 @@ def test_download_document_pdf_failure(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 8b. test_download_document_pdf_rejects_disclaimer
+# 8b. test_download_document_pdf_rejects_disclaimer (legacy)
 # ---------------------------------------------------------------------------
 
 def test_download_document_pdf_rejects_disclaimer(tmp_path):
@@ -260,7 +297,7 @@ def test_download_document_pdf_rejects_disclaimer(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 9. test_download_document_text_success
+# 9. test_download_document_text_success (legacy)
 # ---------------------------------------------------------------------------
 
 def test_download_document_text_success(tmp_path):
@@ -292,10 +329,8 @@ def test_manifest_roundtrip(tmp_path):
         "volume_id": "CO273_534",
         "total_documents": 42,
         "doc_ids": ["GALE|ABC", "GALE|DEF"],
-        "downloaded_pdfs": ["GALE|ABC"],
-        "downloaded_texts": ["GALE|ABC"],
-        "failed_pdfs": [],
-        "failed_texts": ["GALE|DEF"],
+        "downloaded_docs": ["GALE|ABC"],
+        "failed_docs": ["GALE|DEF"],
     }
     save_manifest(manifest_path, data)
     loaded = load_manifest(manifest_path)
@@ -305,15 +340,13 @@ def test_manifest_roundtrip(tmp_path):
     empty = load_manifest(tmp_path / "nonexistent.json")
     assert "volume_id" in empty
     assert "doc_ids" in empty
-    assert "downloaded_pdfs" in empty
-    assert "downloaded_texts" in empty
-    assert "failed_pdfs" in empty
-    assert "failed_texts" in empty
+    assert "downloaded_docs" in empty
+    assert "failed_docs" in empty
     assert empty["total_documents"] == 0
 
 
 # ---------------------------------------------------------------------------
-# 11. test_download_page_image_success
+# 11. test_download_page_image_success (legacy)
 # ---------------------------------------------------------------------------
 
 def test_download_page_image_success(tmp_path):
@@ -331,3 +364,119 @@ def test_download_page_image_success(tmp_path):
     saved = tmp_path / "page_0001.jpg"
     assert saved.exists()
     assert len(saved.read_bytes()) > 1000
+
+
+# ---------------------------------------------------------------------------
+# 12. test_get_document_data
+# ---------------------------------------------------------------------------
+
+def test_get_document_data():
+    """dviViewer API call returns parsed JSON with imageList and originalDocument."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = SAMPLE_DVI_RESPONSE
+    session.get.return_value = response
+
+    result = get_document_data(session, "GALE|LBYSJJ528199212")
+
+    assert "imageList" in result
+    assert len(result["imageList"]) == 3
+    assert result["imageList"][0]["recordId"] == "ENCODED_TOKEN_PAGE1"
+    assert "originalDocument" in result
+    assert "pageOcrTextMap" in result["originalDocument"]
+
+    # Verify the API was called with correct params
+    call_args = session.get.call_args
+    assert "dviViewer/getDviDocument" in call_args.args[0] or "dviViewer/getDviDocument" in str(call_args)
+    params = call_args.kwargs.get("params", {})
+    assert params["docId"] == "GALE|LBYSJJ528199212"
+    assert params["prodId"] == "SPOC"
+
+
+def test_get_document_data_failure():
+    """dviViewer API failure raises exception."""
+    session = MagicMock()
+    session.get.side_effect = Exception("Connection error")
+
+    with pytest.raises(Exception, match="Connection error"):
+        get_document_data(session, "GALE|LBYSJJ528199212")
+
+
+# ---------------------------------------------------------------------------
+# 13. test_download_document_pages
+# ---------------------------------------------------------------------------
+
+def test_download_document_pages(tmp_path):
+    """Downloads page images using recordId tokens from dviViewer JSON."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"\xff\xd8\xff" + b"x" * 5000  # JPEG-like data
+    response.ok = True
+    session.get.return_value = response
+
+    result = download_document_pages(session, SAMPLE_DVI_RESPONSE, tmp_path)
+    assert result == 3  # 3 pages in sample data
+
+    # Check files were created
+    assert (tmp_path / "page_0001.jpg").exists()
+    assert (tmp_path / "page_0002.jpg").exists()
+    assert (tmp_path / "page_0003.jpg").exists()
+
+
+def test_download_document_pages_skips_existing(tmp_path):
+    """Skips pages that already exist on disk."""
+    # Pre-create page 1
+    (tmp_path / "page_0001.jpg").write_bytes(b"\xff\xd8\xff" + b"x" * 5000)
+
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"\xff\xd8\xff" + b"x" * 5000
+    response.ok = True
+    session.get.return_value = response
+
+    result = download_document_pages(session, SAMPLE_DVI_RESPONSE, tmp_path)
+    assert result == 3  # all 3 counted (1 existing + 2 downloaded)
+
+    # Only 2 GET calls (page 1 was skipped)
+    assert session.get.call_count == 2
+
+
+def test_download_document_pages_empty():
+    """Returns 0 when imageList is empty."""
+    result = download_document_pages(MagicMock(), {"imageList": []}, Path("/tmp"))
+    assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# 14. test_save_ocr_text
+# ---------------------------------------------------------------------------
+
+def test_save_ocr_text(tmp_path):
+    """Extracts OCR text from dviViewer JSON and saves combined file."""
+    result = save_ocr_text(SAMPLE_DVI_RESPONSE, tmp_path, "GALE|LBYSJJ528199212")
+    assert result == 3  # 3 pages of OCR text
+
+    saved = tmp_path / "GALE_LBYSJJ528199212.txt"
+    assert saved.exists()
+    content = saved.read_text(encoding="utf-8")
+    assert "--- Page 1 ---" in content
+    assert "Straits Settlements" in content
+    assert "--- Page 2 ---" in content
+    assert "trade and commerce" in content
+    assert "--- Page 3 ---" in content
+
+
+def test_save_ocr_text_empty():
+    """Returns 0 when no OCR text is available."""
+    doc_data = {"originalDocument": {"pageOcrTextMap": {}}}
+    result = save_ocr_text(doc_data, Path("/tmp"), "GALE|TEST")
+    assert result == 0
+
+
+def test_save_ocr_text_no_original_doc():
+    """Returns 0 when originalDocument is missing."""
+    result = save_ocr_text({}, Path("/tmp"), "GALE|TEST")
+    assert result == 0

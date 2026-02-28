@@ -18,6 +18,7 @@ GALE_BASE_URL = os.getenv(
 # Gale API endpoints
 PDF_DOWNLOAD_URL = f"{GALE_BASE_URL}/ps/pdfGenerator/html"
 TEXT_DOWNLOAD_URL = f"{GALE_BASE_URL}/ps/htmlGenerator/forText"
+DVI_DOCUMENT_URL = f"{GALE_BASE_URL}/ps/dviViewer/getDviDocument"
 
 # Gale image server (different subdomain)
 IMAGE_BASE_URL = "https://luna-gale-com.libproxy1.nus.edu.sg"

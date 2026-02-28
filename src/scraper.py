@@ -1,25 +1,29 @@
 # src/scraper.py
 """
-Download documents from Gale Primary Sources using authenticated requests.
+Download documents from Gale Primary Sources using the dviViewer API.
 
-Uses Gale's PDF generator and text extraction endpoints to download
-entire multi-page documents in single requests. Tracks progress via
-manifest.json to support resuming interrupted downloads.
+The dviViewer/getDviDocument endpoint returns JSON with:
+- Page image tokens (recordId) for downloading page images
+- OCR text per page (pageOcrTextMap)
+- PDF record IDs for bulk PDF download
+
+This replaces the old pdfGenerator/html approach which always returned disclaimers.
 """
 import json
 import re
 import time
 from pathlib import Path
-from urllib.parse import unquote, urljoin
+from urllib.parse import unquote
 
 import requests
 from bs4 import BeautifulSoup
 
 from src.config import (
     GALE_BASE_URL,
+    DVI_DOCUMENT_URL,
+    IMAGE_DOWNLOAD_URL,
     PDF_DOWNLOAD_URL,
     TEXT_DOWNLOAD_URL,
-    IMAGE_DOWNLOAD_URL,
     GALE_PROD_ID,
     GALE_PRODUCT_CODE,
     GALE_USER_GROUP,
@@ -67,7 +71,6 @@ def _extract_doc_ids_from_html(html: str) -> list[str]:
 
     for link in soup.find_all("a", href=True):
         href = link["href"]
-        # Look for docId=GALE%7C... in href
         match = re.search(r"docId=(GALE%7C[^&]+)", href)
         if match:
             doc_id = unquote(match.group(1))
@@ -86,11 +89,7 @@ def _extract_total_results(html: str) -> int:
 
 
 def discover_doc_ids(session: requests.Session, search_url: str) -> list[str]:
-    """Paginate Gale search results and extract all docIds from document links.
-
-    DocIds appear in href attributes containing 'docId=GALE%7C...'.
-    Detects total results from page text and follows pagination.
-    """
+    """Paginate Gale search results and extract all docIds from document links."""
     all_doc_ids: list[str] = []
     current_url = search_url
 
@@ -107,7 +106,6 @@ def discover_doc_ids(session: requests.Session, search_url: str) -> list[str]:
         if total == 0 or len(all_doc_ids) >= total:
             break
 
-        # Build next page URL: increment page parameter
         if "page=" in current_url:
             current_page = int(re.search(r"page=(\d+)", current_url).group(1))
             current_url = re.sub(
@@ -120,12 +118,247 @@ def discover_doc_ids(session: requests.Session, search_url: str) -> list[str]:
     return all_doc_ids
 
 
-def _visit_document_page(session: requests.Session, doc_id: str) -> None:
-    """Visit the document viewer page to establish server-side session context.
+# ---------------------------------------------------------------------------
+# dviViewer API-based download (new approach)
+# ---------------------------------------------------------------------------
 
-    Gale may require the user to have 'visited' the document before allowing
-    PDF download (disclaimer acceptance, session binding, etc.).
+
+def get_document_data(session: requests.Session, doc_id: str) -> dict:
+    """Call dviViewer/getDviDocument API to get document metadata and page tokens.
+
+    Returns parsed JSON with:
+    - imageList: list of pages with recordId tokens for image download
+    - originalDocument.pageOcrTextMap: OCR text per page
+    - originalDocument.formatPdfRecordIdsForDviDownload: for BulkPDF
     """
+    params = {
+        "docId": doc_id,
+        "ct": "dvi",
+        "tabID": "Manuscripts",
+        "prodId": GALE_PROD_ID,
+        "userGroupName": GALE_USER_GROUP,
+    }
+    headers = {
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+    }
+
+    response = session.get(
+        DVI_DOCUMENT_URL, params=params, headers=headers,
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def download_document_pages(
+    session: requests.Session,
+    doc_data: dict,
+    output_dir: Path,
+) -> int:
+    """Download all page images for a document using recordId tokens.
+
+    Uses encrypted recordId tokens from imageList to fetch JPEG images
+    from Gale's image server. Skips pages that already exist on disk.
+
+    Returns the number of pages successfully downloaded.
+    """
+    image_list = doc_data.get("imageList", [])
+    if not image_list:
+        return 0
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    downloaded = 0
+
+    for page_info in image_list:
+        page_num = int(page_info["pageNumber"])
+        record_id = page_info["recordId"]
+        filename = f"page_{page_num:04d}.jpg"
+        filepath = output_dir / filename
+
+        # Skip if already downloaded
+        if filepath.exists() and filepath.stat().st_size > 1000:
+            downloaded += 1
+            continue
+
+        try:
+            url = f"{IMAGE_DOWNLOAD_URL}/{record_id}"
+            params = {"legacy": "no", "scale": "1.0", "format": "jpeg"}
+            response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+
+            if len(response.content) < 1000:
+                print(f"    Warning: page {page_num} too small ({len(response.content)} bytes)")
+                continue
+
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            downloaded += 1
+            time.sleep(0.3)
+
+        except Exception as e:
+            print(f"    Failed page {page_num}: {e}")
+
+    return downloaded
+
+
+def save_ocr_text(doc_data: dict, output_dir: Path, doc_id: str) -> int:
+    """Extract OCR text from dviViewer JSON and save as a text file.
+
+    The pageOcrTextMap in the JSON response contains OCR text per page.
+    Saves combined text as {sanitized_doc_id}.txt with page markers.
+
+    Returns number of pages with OCR text.
+    """
+    original_doc = doc_data.get("originalDocument", {})
+    ocr_map = original_doc.get("pageOcrTextMap", {})
+
+    if not ocr_map:
+        return 0
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_id = sanitize_doc_id(doc_id)
+
+    # Combine all pages with page markers
+    combined = []
+    for page_num in sorted(ocr_map.keys(), key=lambda x: int(x)):
+        text = ocr_map[page_num]
+        if text.strip():
+            combined.append(f"--- Page {page_num} ---\n{text}")
+
+    if not combined:
+        return 0
+
+    combined_path = output_dir / f"{safe_id}.txt"
+    with open(combined_path, "w", encoding="utf-8") as f:
+        f.write("\n\n".join(combined))
+
+    return len(combined)
+
+
+# ---------------------------------------------------------------------------
+# Manifest helpers
+# ---------------------------------------------------------------------------
+
+
+def load_manifest(path: Path) -> dict:
+    """Load download manifest from JSON, or return empty manifest."""
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "volume_id": "",
+        "total_documents": 0,
+        "doc_ids": [],
+        "downloaded_docs": [],
+        "failed_docs": [],
+    }
+
+
+def save_manifest(path: Path, data: dict) -> None:
+    """Save download manifest to JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Volume orchestration
+# ---------------------------------------------------------------------------
+
+
+def scrape_volume(
+    session: requests.Session,
+    volume_id: str,
+    doc_ids: list[str],
+    output_dir: Path,
+    resume: bool = True,
+) -> dict:
+    """Download all documents for a volume using the dviViewer API.
+
+    For each document:
+    1. Call dviViewer/getDviDocument to get JSON with page tokens + OCR
+    2. Download page images using recordId tokens
+    3. Extract OCR text from the JSON response
+    4. Track progress in manifest for resume support
+
+    Saves images to output_dir/{volume_id}/images/{safe_doc_id}/page_NNNN.jpg
+    Saves text to output_dir/{volume_id}/text/{safe_doc_id}.txt
+    """
+    volume_dir = output_dir / volume_id
+    images_dir = volume_dir / "images"
+    text_dir = volume_dir / "text"
+    manifest_path = volume_dir / "manifest.json"
+
+    # Load or create manifest
+    if resume:
+        manifest = load_manifest(manifest_path)
+    else:
+        manifest = load_manifest(Path("/nonexistent"))
+
+    manifest["volume_id"] = volume_id
+
+    if resume and manifest["doc_ids"]:
+        doc_ids = manifest["doc_ids"]
+        print(f"[{volume_id}] Resuming with {len(doc_ids)} known documents")
+    else:
+        manifest["doc_ids"] = doc_ids
+
+    manifest["total_documents"] = len(doc_ids)
+    save_manifest(manifest_path, manifest)
+    print(f"[{volume_id}] {len(doc_ids)} documents to process")
+
+    downloaded_docs = set(manifest.get("downloaded_docs", []))
+
+    for i, doc_id in enumerate(doc_ids, 1):
+        if doc_id in downloaded_docs:
+            continue
+
+        safe_id = sanitize_doc_id(doc_id)
+        print(f"  [{volume_id}] {i}/{len(doc_ids)}: {doc_id}")
+
+        try:
+            # Step 1: Get document data from dviViewer API
+            doc_data = get_document_data(session, doc_id)
+            image_list = doc_data.get("imageList", [])
+            print(f"    {len(image_list)} pages found")
+
+            # Step 2: Download page images
+            doc_images_dir = images_dir / safe_id
+            pages = download_document_pages(session, doc_data, doc_images_dir)
+            print(f"    {pages}/{len(image_list)} page images downloaded")
+
+            # Step 3: Extract OCR text
+            ocr_pages = save_ocr_text(doc_data, text_dir, doc_id)
+            if ocr_pages:
+                print(f"    {ocr_pages} pages of OCR text saved")
+
+            # Mark as complete
+            manifest.setdefault("downloaded_docs", []).append(doc_id)
+            downloaded_docs.add(doc_id)
+
+        except Exception as e:
+            print(f"    FAILED: {e}")
+            manifest.setdefault("failed_docs", [])
+            if doc_id not in manifest["failed_docs"]:
+                manifest["failed_docs"].append(doc_id)
+
+        save_manifest(manifest_path, manifest)
+        time.sleep(DOWNLOAD_DELAY)
+
+    done = len(manifest.get("downloaded_docs", []))
+    failed = len(manifest.get("failed_docs", []))
+    print(f"[{volume_id}] Done: {done} downloaded, {failed} failed")
+    return manifest
+
+
+# ---------------------------------------------------------------------------
+# Legacy functions (kept for backward compatibility with tests)
+# ---------------------------------------------------------------------------
+
+
+def _visit_document_page(session: requests.Session, doc_id: str) -> None:
+    """Visit the document viewer page to establish server-side session context."""
     encoded_id = doc_id.replace("|", "%7C")
     url = (
         f"{GALE_BASE_URL}/ps/retrieve.do"
@@ -146,10 +379,8 @@ def download_document_pdf(
 ) -> bool:
     """Download a document as PDF via Gale's PDF generator endpoint.
 
-    POSTs to PDF_DOWNLOAD_URL with form data matching browser exactly.
-    Saves as output_dir/{sanitized_doc_id}.pdf.
-    Returns True on success, False on failure.
-    Rejects suspiciously small PDFs (<5KB) as likely disclaimers.
+    NOTE: This endpoint always returns disclaimers. Use get_document_data()
+    + download_document_pages() instead. Kept for backward compatibility.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -164,7 +395,6 @@ def download_document_pdf(
         "_csrf": csrf_token,
     }
 
-    # Set Referer to the document viewer page
     encoded_id = doc_id.replace("|", "%7C")
     headers = {
         "Referer": (
@@ -188,7 +418,6 @@ def download_document_pdf(
             print(f"  Warning: unexpected Content-Type for {doc_id}: {content_type}")
             return False
 
-        # Reject suspiciously small PDFs (disclaimers are ~2.5KB)
         if len(response.content) < 5000:
             print(
                 f"  Warning: PDF too small for {doc_id} "
@@ -216,11 +445,10 @@ def download_document_text(
     csrf_token: str,
     output_dir: Path,
 ) -> bool:
-    """Download OCR text for a document via Gale's text extraction endpoint.
+    """Download OCR text via Gale's text extraction endpoint.
 
-    POSTs to TEXT_DOWNLOAD_URL with form data matching browser exactly.
-    Saves as output_dir/{sanitized_doc_id}.txt.
-    Returns True on success, False on failure.
+    NOTE: This endpoint returns empty. Use save_ocr_text() with dviViewer
+    JSON response instead. Kept for backward compatibility.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -236,7 +464,6 @@ def download_document_text(
         "_csrf": csrf_token,
     }
 
-    # Set Referer to the document viewer page
     encoded_id = doc_id.replace("|", "%7C")
     headers = {
         "Referer": (
@@ -280,9 +507,8 @@ def download_page_image(
 ) -> bool:
     """Download a single page image from Gale's image server.
 
-    GETs from IMAGE_DOWNLOAD_URL/{encoded_id} with format=jpeg.
-    Saves as output_dir/page_NNNN.jpg.
-    Returns True on success, False on failure.
+    NOTE: Prefer download_document_pages() which handles all pages from
+    dviViewer JSON. Kept for backward compatibility.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     url = f"{IMAGE_DOWNLOAD_URL}/{encoded_id}"
@@ -312,134 +538,3 @@ def download_page_image(
     except Exception as e:
         print(f"  Failed to download page image {page_num}: {e}")
         return False
-
-
-def load_manifest(path: Path) -> dict:
-    """Load download manifest from JSON, or return empty manifest with new schema."""
-    if path.exists():
-        with open(path) as f:
-            return json.load(f)
-    return {
-        "volume_id": "",
-        "total_documents": 0,
-        "doc_ids": [],
-        "downloaded_pdfs": [],
-        "downloaded_texts": [],
-        "failed_pdfs": [],
-        "failed_texts": [],
-    }
-
-
-def save_manifest(path: Path, data: dict) -> None:
-    """Save download manifest to JSON."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-def scrape_volume(
-    session: requests.Session,
-    volume_id: str,
-    doc_ids: list[str],
-    output_dir: Path,
-    resume: bool = True,
-    download_text: bool = True,
-) -> dict:
-    """Orchestrate the full download of a Gale volume.
-
-    Steps:
-    1. Extract CSRF token from a Gale page
-    2. Use provided doc_ids (from data/volumes.json)
-    3. Download each document as PDF (and optionally text)
-    4. Track progress in manifest, saving after each download
-
-    Saves PDFs to output_dir/{volume_id}/documents/
-    Saves text to output_dir/{volume_id}/text/
-    """
-    volume_dir = output_dir / volume_id
-    pdf_dir = volume_dir / "documents"
-    text_dir = volume_dir / "text"
-    manifest_path = volume_dir / "manifest.json"
-
-    # Load or create manifest
-    if resume:
-        manifest = load_manifest(manifest_path)
-    else:
-        manifest = load_manifest(Path("/nonexistent"))  # fresh empty
-
-    manifest["volume_id"] = volume_id
-
-    # Step 1: extract CSRF from any Gale page
-    print(f"[{volume_id}] Extracting CSRF token...")
-    csrf_url = f"{GALE_BASE_URL}/ps/start.do?prodId={GALE_PROD_ID}&userGroupName={GALE_USER_GROUP}"
-    csrf_token = extract_csrf_token(session, csrf_url)
-
-    # Step 2: use provided doc_ids (or reuse from manifest if resuming)
-    if resume and manifest["doc_ids"]:
-        doc_ids = manifest["doc_ids"]
-        print(f"[{volume_id}] Resuming with {len(doc_ids)} known documents")
-    else:
-        manifest["doc_ids"] = doc_ids
-
-    manifest["total_documents"] = len(doc_ids)
-    save_manifest(manifest_path, manifest)
-    print(f"[{volume_id}] Found {len(doc_ids)} documents")
-
-    # Step 3: download each document
-    downloaded_pdfs = set(manifest["downloaded_pdfs"])
-    downloaded_texts = set(manifest["downloaded_texts"])
-
-    for i, doc_id in enumerate(doc_ids, 1):
-        # Visit document page to establish session context before downloading
-        if doc_id not in downloaded_pdfs or (download_text and doc_id not in downloaded_texts):
-            _visit_document_page(session, doc_id)
-            time.sleep(1)
-
-        # PDF download
-        if doc_id not in downloaded_pdfs:
-            print(f"  [{volume_id}] PDF {i}/{len(doc_ids)}: {doc_id}")
-            success = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                if download_document_pdf(session, doc_id, csrf_token, pdf_dir):
-                    success = True
-                    break
-                if attempt < MAX_RETRIES:
-                    print(f"    Retry {attempt}/{MAX_RETRIES}...")
-                    time.sleep(DOWNLOAD_DELAY)
-
-            if success:
-                manifest["downloaded_pdfs"].append(doc_id)
-                downloaded_pdfs.add(doc_id)
-            elif doc_id not in manifest["failed_pdfs"]:
-                manifest["failed_pdfs"].append(doc_id)
-
-            save_manifest(manifest_path, manifest)
-            time.sleep(DOWNLOAD_DELAY)
-
-        # Text download
-        if download_text and doc_id not in downloaded_texts:
-            print(f"  [{volume_id}] Text {i}/{len(doc_ids)}: {doc_id}")
-            success = False
-            for attempt in range(1, MAX_RETRIES + 1):
-                if download_document_text(session, doc_id, csrf_token, text_dir):
-                    success = True
-                    break
-                if attempt < MAX_RETRIES:
-                    print(f"    Retry {attempt}/{MAX_RETRIES}...")
-                    time.sleep(DOWNLOAD_DELAY)
-
-            if success:
-                manifest["downloaded_texts"].append(doc_id)
-                downloaded_texts.add(doc_id)
-            elif doc_id not in manifest["failed_texts"]:
-                manifest["failed_texts"].append(doc_id)
-
-            save_manifest(manifest_path, manifest)
-            time.sleep(DOWNLOAD_DELAY)
-
-    pdfs = len(manifest["downloaded_pdfs"])
-    texts = len(manifest["downloaded_texts"])
-    fpdf = len(manifest["failed_pdfs"])
-    ftxt = len(manifest["failed_texts"])
-    print(f"[{volume_id}] Done: {pdfs} PDFs, {texts} texts, {fpdf} failed PDFs, {ftxt} failed texts")
-    return manifest
