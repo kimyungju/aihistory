@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS — Key Context
 
-**Last Updated: 2026-02-28**
+**Last Updated: 2026-02-28 (session 2 — workflow discussion)**
 
 ---
 
@@ -10,13 +10,17 @@
 |------|---------|--------|
 | `docs/plans/2026-02-28-phase1-scraper-gcs-design.md` | Design document (approved) | Created |
 | `docs/plans/2026-02-28-phase1-scraper-gcs.md` | Full implementation plan with code | Created |
-| `pyproject.toml` | Project deps & metadata | To create |
-| `src/config.py` | Volume definitions, GCS/Gale settings | To create |
-| `src/auth.py` | NUS SSO auth → cookie extraction | To create |
-| `src/scraper.py` | Gale page image download | To create |
-| `src/pdf_builder.py` | Combine images → PDF | To create |
-| `src/gcs_upload.py` | Upload to GCS | To create |
-| `scripts/run.py` | CLI entry point | To create |
+| `pyproject.toml` | Project deps & metadata | ✅ Created |
+| `src/config.py` | Volume definitions, GCS/Gale settings | ✅ Created (51 lines) |
+| `src/auth.py` | NUS SSO auth → cookie extraction | ✅ Created (78 lines) |
+| `src/scraper.py` | Gale page image download | ✅ Created (325 lines) |
+| `src/pdf_builder.py` | Combine images → PDF | ✅ Created (44 lines) |
+| `src/gcs_upload.py` | Upload to GCS | ✅ Created (77 lines) |
+| `scripts/run.py` | CLI entry point | ✅ Created |
+| `tests/test_auth.py` | Auth unit tests | ✅ Created |
+| `tests/test_scraper.py` | Scraper unit tests | ✅ Created |
+| `tests/test_pdf_builder.py` | PDF builder unit tests | ✅ Created |
+| `tests/test_gcs_upload.py` | GCS upload unit tests | ✅ Created |
 | `.env` | Secrets (GCS key, bucket) | To create (gitignored) |
 | `docs/gale-api-notes.md` | API endpoint discovery notes | To create (manual) |
 

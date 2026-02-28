@@ -1,21 +1,21 @@
 # Phase 1: Scraper + GCS — Task Checklist
 
-**Last Updated: 2026-02-28**
+**Last Updated: 2026-02-28 (session 2)**
 
 ---
 
 ## Phase A: Foundation (Sequential — Team Lead)
 
-### Task 1: Project Scaffolding [S]
-- [ ] `git init`
-- [ ] Create `pyproject.toml` with all dependencies
-- [ ] Create `.gitignore` (pdfs/, .env, __pycache__, *.json creds)
-- [ ] Create `.env.example`
-- [ ] Create `src/__init__.py`
-- [ ] Create `src/config.py` with VOLUMES, paths, settings
-- [ ] Create directories: `src/`, `pdfs/`, `scripts/`, `tests/`
-- [ ] `pip install -e ".[dev]"` succeeds
-- [ ] Commit: `chore: scaffold project with config, dependencies, and gitignore`
+### Task 1: Project Scaffolding [S] ✅
+- [x] `git init`
+- [x] Create `pyproject.toml` with all dependencies
+- [x] Create `.gitignore` (pdfs/, .env, __pycache__, *.json creds)
+- [x] Create `.env.example`
+- [x] Create `src/__init__.py`
+- [x] Create `src/config.py` with VOLUMES, paths, settings
+- [x] Create directories: `src/`, `pdfs/`, `scripts/`, `tests/`
+- [x] `pip install -e ".[dev]"` succeeds
+- [x] Commit: `chore: scaffold project with config, dependencies, and gitignore`
 
 ---
 
