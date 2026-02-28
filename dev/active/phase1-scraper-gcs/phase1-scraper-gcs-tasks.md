@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS — Task Checklist
 
-**Last Updated: 2026-02-28 (session 2)**
+**Last Updated: 2026-02-28 (session 3)**
 
 ---
 
@@ -19,97 +19,81 @@
 
 ---
 
-## Phase B: Core Modules (Parallel Agents)
+## Phase B: Core Modules (Parallel Agents) ✅
 
-### Agent 1: auth-scraper
+### Agent 1: auth-scraper ✅
 
-#### Task 2: Authentication Module [M]
-- [ ] Write `tests/test_auth.py` (2 tests: cookie extraction, session creation)
-- [ ] Run tests — verify FAIL
-- [ ] Write `src/auth.py` (extract_cookies_from_driver, create_session_with_cookies, authenticate_gale)
-- [ ] Run tests — verify 2 PASS
-- [ ] Commit: `feat: add NUS SSO authentication module with cookie extraction`
+#### Task 2: Authentication Module [M] ✅
+- [x] Write `tests/test_auth.py` (2 tests)
+- [x] Write `src/auth.py` (extract_cookies_from_driver, create_session_with_cookies, authenticate_gale)
+- [x] 2 tests passing
+- [x] Committed
 
-#### Task 4: Scraper Module [L]
-- [ ] Write `tests/test_scraper.py` (5 tests: URL build, manifest load/save, download success/fail)
-- [ ] Run tests — verify FAIL
-- [ ] Write `src/scraper.py` (build_page_url, load_manifest, save_manifest, download_page, scrape_volume)
-- [ ] Run tests — verify 5 PASS
-- [ ] Commit: `feat: add scraper module with page download and resume support`
+#### Task 4: Scraper Module [L] ✅ (then rewritten — see Task 3)
+- [x] Original: page-by-page scraper with 5 tests
+- [x] REWRITTEN after API discovery: document-level PDF download with 10 tests
+- [x] Commit: `feat: rewrite scraper for Gale document-level PDF download API`
 
-### Agent 2: pdf-gcs
+### Agent 2: pdf-gcs ✅
 
-#### Task 5: PDF Builder Module [S]
-- [ ] Write `tests/test_pdf_builder.py` (1 test: combine images → PDF, verify page count)
-- [ ] Run tests — verify FAIL
-- [ ] Write `src/pdf_builder.py` (build_pdf_from_images)
-- [ ] Run tests — verify 1 PASS
-- [ ] Commit: `feat: add PDF builder to combine page images into per-volume PDFs`
+#### Task 5: PDF Builder Module [S] ✅ (then rewritten)
+- [x] Original: Pillow image→PDF
+- [x] REWRITTEN: pypdf merge_pdfs() for combining document PDFs
+- [x] 2 tests passing
 
-#### Task 6: GCS Upload Module [M]
-- [ ] Write `tests/test_gcs_upload.py` (2 tests: single file upload, volume upload)
-- [ ] Run tests — verify FAIL
-- [ ] Write `src/gcs_upload.py` (get_gcs_client, get_bucket, upload_file, upload_volume, upload_all_volumes, list_bucket_contents)
-- [ ] Run tests — verify 2 PASS
-- [ ] Commit: `feat: add GCS upload module for volume files`
+#### Task 6: GCS Upload Module [M] ✅
+- [x] Write `tests/test_gcs_upload.py` (2 tests)
+- [x] Write `src/gcs_upload.py` (get_gcs_client, get_bucket, upload_file, upload_volume, upload_all_volumes, list_bucket_contents)
+- [x] 2 tests passing
+- [x] Committed
 
 ---
 
-## Manual Tasks (User — can run in parallel with Phase B)
+## Manual Tasks (User)
 
-### Task 3: Gale API Endpoint Discovery [M] [MANUAL]
-- [ ] Log into Gale via NUS proxy in Chrome
-- [ ] Open CO 273 document in viewer
-- [ ] Open DevTools → Network tab
-- [ ] Navigate pages, identify page image API endpoint pattern
-- [ ] Record: URL pattern, method, headers, parameters, response type
-- [ ] Find Gale document IDs for CO273/534 and CO273/550
-- [ ] Create `docs/gale-api-notes.md` with findings
-- [ ] Update `src/config.py` VOLUMES with real gale_id values
-- [ ] Update `src/scraper.py` PAGE_URL_TEMPLATE with real endpoint
-- [ ] Commit: `docs: add Gale API endpoint discovery notes and volume IDs`
+### Task 3: Gale API Endpoint Discovery [M] [MANUAL] ✅
+- [x] Log into Gale, use Chrome DevTools to find API endpoints
+- [x] Discovered: POST /ps/pdfGenerator/html (PDF download)
+- [x] Discovered: POST /ps/htmlGenerator/forText (OCR text)
+- [x] CSRF token in hidden form field + XSRF-TOKEN cookie
+- [x] Each volume has many sub-documents with GALE|... docIds
+- [x] Scraper completely rewritten based on findings
+- [x] Commit: `feat: rewrite scraper for Gale document-level PDF download API`
 
-### Task 9: GCP Project & Bucket Setup [M] [MANUAL]
-- [ ] Create GCP project named `aihistory`
+### Task 9: GCP Project & Bucket Setup [M] [MANUAL] 🔄 IN PROGRESS
+- [ ] Create GCP project named `aihistory` at console.cloud.google.com
 - [ ] Enable Cloud Storage API
-- [ ] Create service account `aihistory-uploader` with Storage Object Creator + Viewer roles
-- [ ] Download JSON key file (keep out of git)
 - [ ] Create bucket `aihistory-co273` in `asia-southeast1`
-- [ ] Copy `.env.example` → `.env`, fill in `GCS_BUCKET` and `GCS_KEY_PATH`
-- [ ] Create viewer service account for downstream collaborators
-- [ ] Test bucket access with `gsutil ls gs://aihistory-co273/`
+- [ ] Create service account `aihistory-uploader` with Storage Object Creator + Viewer roles
+- [ ] Download JSON key file → `credentials/gcs-key.json`
+- [ ] Create `.env` from `.env.example`, fill in GCS_KEY_PATH
+- [ ] (Optional) Create viewer service account for collaborators
+- **Status**: User has Google account, no GCP project yet. Walkthrough provided — waiting for user to complete Steps 1-4 in GCP Console.
 
 ---
 
 ## Phase C: Integration (Sequential — Team Lead)
 
-### Task 7: CLI Entry Point [S]
-- [ ] Create `scripts/__init__.py`
-- [ ] Create `scripts/run.py` with scrape/build/upload/all commands
-- [ ] `python -m scripts.run --help` displays all commands
-- [ ] Commit: `feat: add CLI entry point with scrape/build/upload/all commands`
+### Task 7: CLI Entry Point [S] ✅
+- [x] Create `scripts/__init__.py`
+- [x] Create `scripts/run.py` with scrape/build/upload/all commands
+- [x] `python -m scripts.run --help` works
+- [x] Commit: `feat: add CLI entry point with scrape/build/upload/all commands`
 
-### Task 8: End-to-End Smoke Test [S]
-- [ ] Clean venv install: `pip install -e ".[dev]"`
-- [ ] `pytest tests/ -v` — all 8+ tests pass
-- [ ] `python -m scripts.run --help` — works
-- [ ] `python -m scripts.run scrape --help` — works
-- [ ] Commit: `chore: verify all tests pass and CLI works`
+### Task 8: End-to-End Smoke Test [S] ✅
+- [x] All 16 tests passing (`pytest tests/ -v`)
+- [x] CLI works: `python -m scripts.run --help`
+- [x] All subcommands work: scrape --help, build --help, upload
 
-### Task 10: Real Download & Full Integration [XL]
-- [ ] Verify Task 3 complete (API endpoints known)
+### Task 10: Real Download & Full Integration [XL] ⏳ BLOCKED
+- [ ] Fill `search_url` values in `src/config.py` from Gale volume facet filter URLs
 - [ ] Verify Task 9 complete (GCS bucket ready)
-- [ ] Test with 5 pages: `python -m scripts.run scrape`
-- [ ] Verify 5 images in `pdfs/CO273_534/pages/`
-- [ ] Run full download: `python -m scripts.run scrape --resume`
-- [ ] Verify CO273_534: 1,436 pages downloaded
-- [ ] Verify CO273_550: 460 pages downloaded
-- [ ] Build PDFs: `python -m scripts.run build`
-- [ ] Verify 2 assembled PDFs created
+- [ ] Test: `python -m scripts.run scrape --volume CO273_534` (verify docId discovery + PDF download)
+- [ ] Full run: `python -m scripts.run scrape --resume` (all 3 volumes)
+- [ ] Build: `python -m scripts.run build`
 - [ ] Upload: `python -m scripts.run upload`
-- [ ] Verify in GCS Console: all files present
-- [ ] Test: non-NUS collaborator can access bucket with viewer SA
-- [ ] Commit: `feat: configure real Gale API endpoints and verify download`
+- [ ] Verify bucket contents in Cloud Console
+- **Blocked by**: Task 9 (GCP bucket) + empty search_url values in config.py
 
 ---
 
@@ -117,11 +101,12 @@
 
 | Phase | Tasks | Agent | Status |
 |-------|-------|-------|--------|
-| A | 1 (Scaffold) | Team Lead | Pending |
-| B | 2, 4 (Auth + Scraper) | Agent 1 | Pending |
-| B | 5, 6 (PDF + GCS) | Agent 2 | Pending |
-| Manual | 3 (API Discovery) | User | Pending |
-| Manual | 9 (GCP Setup) | User | Pending |
-| C | 7, 8, 10 (Integration) | Team Lead | Pending |
+| A | 1 (Scaffold) | Team Lead | ✅ Done |
+| B | 2, 4 (Auth + Scraper) | Agent 1 | ✅ Done (scraper rewritten) |
+| B | 5, 6 (PDF + GCS) | Agent 2 | ✅ Done (pdf_builder rewritten) |
+| Manual | 3 (API Discovery) | User | ✅ Done |
+| Manual | 9 (GCP Setup) | User | 🔄 In Progress |
+| C | 7, 8 (CLI + Smoke) | Team Lead | ✅ Done |
+| C | 10 (Integration) | Team Lead | ⏳ Blocked |
 
-**Total: 10 tasks, 3 agents, 2 manual user tasks**
+**Completed: 8/10 tasks. Remaining: Task 9 (GCP setup) → Task 10 (real download test)**
