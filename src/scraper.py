@@ -222,19 +222,16 @@ def download_document_text(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Server requires all form fields (hidden fields not shown in DevTools)
     data = {
-        "text": "",
-        "userGroupName": GALE_USER_GROUP,
         "prodId": GALE_PROD_ID,
-        "fileName": "",
+        "userGroupName": GALE_USER_GROUP,
         "downloadAction": "DO_DOWNLOAD_DOCUMENT",
-        "_csrf": csrf_token,
-        "accessLevel": "FULLTEXT",
-        "deliveryType": "DownLoad",
         "retrieveFormat": "PLAIN_TEXT",
+        "deliveryType": "DownLoad",
         "productCode": GALE_PRODUCT_CODE,
+        "accessLevel": "FULLTEXT",
         "docId": doc_id,
+        "_csrf": csrf_token,
     }
 
     # Set Referer to the document viewer page
