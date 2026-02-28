@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS — Key Context
 
-**Last Updated: 2026-02-28 (session 3 — real download test)**
+**Last Updated: 2026-02-28 (session 4 — download fixes applied)**
 
 ---
 
@@ -9,58 +9,50 @@
 | File | Purpose | Status |
 |------|---------|--------|
 | `data/volumes.json` | All 52 docIds by volume (data-driven) | ✅ Committed |
-| `src/config.py` | `load_volumes()` reads from JSON | ✅ Committed |
-| `src/scraper.py` | `scrape_volume()` accepts `doc_ids` list | **UNCOMMITTED** — form data fix |
-| `src/auth.py` | NUS SSO auth via Selenium | **UNCOMMITTED** — em dash fix |
-| `scripts/run.py` | CLI: scrape/build/upload/all | ✅ Committed |
+| `src/config.py` | `load_volumes()` reads JSON, `IMAGE_DOWNLOAD_URL` added | ✅ Committed (c59d6c4) |
+| `src/scraper.py` | `scrape_volume()`, `download_page_image()`, disclaimer rejection | ✅ Committed (c59d6c4) |
+| `src/auth.py` | NUS SSO auth, polls for JSESSIONID11_omni | ✅ Committed (67dfbf3) |
+| `scripts/run.py` | CLI: scrape/build/upload/test/all + debug page analysis | ✅ Committed (f18e611) |
 | `src/pdf_builder.py` | pypdf merge (unchanged) | ✅ |
 | `src/gcs_upload.py` | GCS upload (unchanged) | ✅ |
 | `.env` | GCS_KEY_PATH configured | ✅ |
 
-**16/16 tests passing. 52 docIds across 3 volumes.**
+**28/28 tests passing. All code committed and pushed. No uncommitted changes.**
 
 ---
 
-## CRITICAL: PDF Download Returns Disclaimers Only
+## Session 4 Changes (This Session)
 
-### What Happened
-The scraper ran successfully for CO273_534 (26/26 docs downloaded, 0 failures), BUT:
-- **Every PDF is exactly 2,479 bytes** (identical size)
-- **Every PDF contains only a 1-page disclaimer** from Cengage/Gale, NOT the actual scanned document
-- **All text files are 0 bytes** (empty)
+### Fixes Applied to Download Problem
 
-### Root Cause
-The POST to `/ps/pdfGenerator/html` returns a disclaimer PDF, not the real scanned document. The real download likely uses a **different endpoint or additional parameters**.
+1. **Auth: JSESSIONID11_omni polling** (67dfbf3)
+   - `authenticate_gale()` now polls up to 15 seconds for `JSESSIONID11_omni` cookie
+   - This was likely the root cause of disclaimers — Gale needs its session cookie, not just ezproxy
 
-### What We Know From Form Inspection
-On the document viewer page, there are 3 download-related forms:
+2. **Form data cleaned** (e2c8e02, dab05ff)
+   - PDF form data: removed 4 extra fields (`title`, `asid`, `accessLevel`, `productCode`)
+   - Text form data: removed 2 extra fields (`text`, `fileName`)
+   - Now matches exactly what user captured from Chrome DevTools
 
-1. **Form 4**: `POST /ps/pdfGenerator/html` — this is what we're using. Returns disclaimer only.
-2. **Form 8**: `POST /ps/htmlGenerator/forText` — text extraction. Returns empty content.
-3. **Form 9**: `POST /ps/callisto/BulkPDF/UBER2` — **this might be the real PDF download**. Has fields: `dl`, `u=nuslib`, `p=SPOC`, `_csrf`.
+3. **Image download added** (c59d6c4)
+   - New `download_page_image()` function in `src/scraper.py`
+   - New `IMAGE_BASE_URL` and `IMAGE_DOWNLOAD_URL` in `src/config.py`
+   - Fetches page images directly from `luna-gale-com.libproxy1.nus.edu.sg/imgsrv/FastFetch/UBER2/`
+   - Fallback path that bypasses PDF download entirely
 
-### Next Step: Investigate the Correct Download
-User needs to:
-1. Open a document in Gale viewer in their regular browser
-2. Open Chrome DevTools → Network tab
-3. Click the actual download/save button
-4. Capture the URL, method, and form data of the real download request
-5. Look especially at Form 9 (`/ps/callisto/BulkPDF/UBER2`) — this is likely the real endpoint
+4. **Debug page analysis enhanced** (f18e611)
+   - `scripts/run.py` `cmd_test` with `--debug` searches for image IDs, API endpoints, recordIds
+   - Tests image endpoint with different ID formats
 
-### Error Encountered
-After the 26 downloads, user got: **"Inter-institutional access failure. Please contact your system administrator for assistance."** — likely rate limiting or session expiry from 52 rapid requests (26 PDF + 26 text).
+### User-Captured Endpoints (Chrome DevTools)
 
----
+**PDF:** `POST /ps/pdfGenerator/html` — form: prodId, userGroupName, downloadAction, retrieveFormat, deliveryType, disclaimerDisabled, docId, _csrf
 
-## Uncommitted Changes (MUST COMMIT)
+**Text:** `POST /ps/htmlGenerator/forText` — form: prodId, userGroupName, downloadAction, retrieveFormat, deliveryType, productCode, accessLevel, docId, _csrf
 
-### `src/auth.py`
-- Replaced em dash `—` with `-` in print statements (UnicodeEncodeError on Korean Windows cp949 console)
+**Image:** `GET luna-gale-com.libproxy1.nus.edu.sg/imgsrv/FastFetch/UBER2/{encoded_id}?legacy=no&scale=1.0&format=jpeg`
 
-### `src/scraper.py`
-- Added missing form fields to `download_document_pdf()`: `title`, `disclaimerDisabled`, `asid`, `accessLevel`, `deliveryType`, `productCode`
-- Added missing form fields to `download_document_text()`: `text`, `userGroupName`, `prodId`, `fileName`, `downloadAction`, `_csrf`, `deliveryType`
-- These fixed the HTTP 500 errors (was getting 500, now gets 200), but the response is still just a disclaimer PDF
+**Auth cookies needed:** ezproxy, ezproxyl, ezproxyn, JSESSIONID11_omni, XSRF-TOKEN
 
 ---
 
@@ -70,6 +62,14 @@ After the 26 downloads, user got: **"Inter-institutional access failure. Please 
 data/volumes.json → src/config.py:load_volumes() → VOLUMES dict
                                                       ↓
 scripts/run.py → scrape_volume(doc_ids=vol["doc_ids"]) → download each
+                                                      ↓
+                    _visit_document_page() → download_document_pdf() → save
+                                          → download_document_text() → save
+```
+
+Alternative path (image download):
+```
+download_page_image(session, encoded_id, output_dir, page_num) → page_NNNN.jpg
 ```
 
 ---
@@ -78,11 +78,9 @@ scripts/run.py → scrape_volume(doc_ids=vol["doc_ids"]) → download each
 
 | Volume | Docs | Status |
 |--------|------|--------|
-| CO273_534 | 26 | Downloaded (disclaimers only — needs fix) |
+| CO273_534 | 26 | Downloaded disclaimers only (delete and retry) |
 | CO273_550 | 20 | Not started |
 | CO273_579 | 6 | Not started |
-
-Existing downloads in `pdfs/CO273_534/` should be deleted before re-running with correct endpoint.
 
 ---
 
@@ -97,7 +95,16 @@ Existing downloads in `pdfs/CO273_534/` should be deleted before re-running with
 ## Environment Notes
 
 - Python: `/c/Users/yjkim/AppData/Local/Microsoft/WindowsApps/python3.exe` (3.14.3)
-- Venv: `source .venv/Scripts/activate`
-- Korean Windows (cp949) — avoid unicode em dashes in print statements
+- Korean Windows (cp949) — no em dashes in print statements
 - Git remote: https://github.com/kimyungju/aihistory.git
-- Auth captures only 3 cookies: `ezproxyn`, `ezproxyl`, `ezproxy` (EZProxy only)
+- Test command: `python -m pytest tests/ --ignore=tests/test_gcs_upload.py -v`
+
+---
+
+## Next Step
+
+Test a real download with NUS SSO to see if the JSESSIONID11_omni fix resolves the disclaimer issue:
+```
+python -m scripts.run test --doc-id "GALE|LBYSJJ528199212"
+```
+If still disclaimers, use `--debug` flag to analyze the page and find the correct image endpoint encoded_id format.

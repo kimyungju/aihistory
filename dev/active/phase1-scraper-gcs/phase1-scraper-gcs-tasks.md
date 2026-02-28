@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS — Task Checklist
 
-**Last Updated: 2026-02-28 (session 3)**
+**Last Updated: 2026-02-28 (session 4)**
 
 ---
 
@@ -10,16 +10,23 @@ All code, tests, GCP setup, and docId config complete.
 
 ## Task 10: Real Download & Integration — IN PROGRESS
 
-### 10a: Fix PDF download endpoint ❌ BLOCKED
+### 10a: Fix PDF download ⏳ FIXES APPLIED, NEEDS TESTING
 - [x] Scraper runs end-to-end (auth → CSRF → download loop → manifest)
-- [x] 26/26 docs downloaded for CO273_534
-- [ ] **PDFs contain only disclaimers (2,479 bytes each), not real scanned documents**
-- [ ] Need to find correct Gale download endpoint (possibly `/ps/callisto/BulkPDF/UBER2`)
-- [ ] User must capture real download request via Chrome DevTools Network tab
-- [ ] Update `src/scraper.py` with correct endpoint and form data
-- [ ] Re-download CO273_534 with real PDFs
+- [x] 26/26 docs downloaded for CO273_534 (disclaimers only)
+- [x] User captured real endpoints via Chrome DevTools
+- [x] Form data cleaned to match captured data (e2c8e02, dab05ff)
+- [x] Auth now polls for JSESSIONID11_omni cookie (67dfbf3)
+- [x] Disclaimer size rejection added (<5KB = rejected) (fc7629c)
+- [x] Doc page visit before download added (fc7629c)
+- [x] Referer headers added to requests (fc7629c)
+- [x] Image download fallback added (c59d6c4)
+- [x] Test subcommand added: `python -m scripts.run test --doc-id "GALE|..."` (7fe5b58)
+- [ ] **TEST with NUS SSO** — verify real PDFs download (not disclaimers)
+- [ ] If disclaimers persist, investigate image endpoint as alternative
+- [ ] Delete old pdfs/CO273_534/ disclaimer files, re-download
 
 ### 10b: Download remaining volumes
+- [ ] CO273_534 (26 docs) — re-download with fix
 - [ ] CO273_550 (20 docs)
 - [ ] CO273_579 (6 docs)
 
@@ -30,11 +37,13 @@ All code, tests, GCP setup, and docId config complete.
 
 ---
 
-## Bugs Fixed This Session
+## Bugs Fixed (Sessions 3-4)
 
-1. **UnicodeEncodeError** (cp949): Em dash `—` in auth.py print → replaced with `-`
-2. **HTTP 500 on PDF download**: Missing form fields → added `disclaimerDisabled`, `deliveryType`, etc.
-3. **`.gitignore` blocking volumes.json**: `*.json` rule → added `!data/volumes.json` exception
+1. **UnicodeEncodeError** (cp949): Em dash in auth.py → ASCII dash
+2. **HTTP 500 on PDF download**: Missing form fields → added, then cleaned to match DevTools capture
+3. **`.gitignore` blocking volumes.json**: Added `!data/volumes.json` exception
+4. **Disclaimer-only PDFs**: Added size rejection, doc page visit, Referer headers, JSESSIONID11_omni wait
+5. **Extra form fields**: Removed `title`, `asid`, `accessLevel`, `productCode` (PDF) and `text`, `fileName` (text)
 
 ---
 
@@ -42,9 +51,10 @@ All code, tests, GCP setup, and docId config complete.
 
 | Item | Status |
 |------|--------|
-| Code + Tests (16/16) | ✅ |
+| Code + Tests (28/28) | ✅ |
 | GCP Setup | ✅ |
 | DocId Config (52 docs) | ✅ |
-| PDF Download | ❌ Returns disclaimers, not real docs |
-| Text Download | ❌ Returns empty content |
-| Build + Upload | ⏳ Blocked by download fix |
+| Download Fixes | ✅ Applied, needs SSO test |
+| Image Download Fallback | ✅ Implemented |
+| PDF Download | ⏳ Needs real test with NUS SSO |
+| Build + Upload | ⏳ Blocked by download test |
