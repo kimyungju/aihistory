@@ -62,6 +62,12 @@ def cmd_ocr(args):
     for volume_id in get_volume_ids(args):
         volume_dir = DOWNLOAD_DIR / volume_id
 
+        if not getattr(args, 'local', False):
+            print(f"[{volume_id}] Downloading images from GCS...")
+            from src.ocr.pipeline import download_images_from_gcs
+            count = download_images_from_gcs(volume_id, volume_dir / "images")
+            print(f"[{volume_id}] Downloaded {count} images from GCS")
+
         if not (volume_dir / "images").exists():
             print(f"Skipping {volume_id}: no images/ directory (run extract first)")
             continue
@@ -72,6 +78,12 @@ def cmd_ocr(args):
             volume_id=volume_id,
             concurrency=args.concurrency,
         ))
+
+        if not getattr(args, 'local', False):
+            print(f"[{volume_id}] Uploading OCR results to GCS...")
+            from src.ocr.pipeline import upload_ocr_to_gcs
+            count = upload_ocr_to_gcs(volume_id, volume_dir / "ocr")
+            print(f"[{volume_id}] Uploaded {count} OCR files to GCS")
 
     print("\n=== OCR complete ===")
 
@@ -95,12 +107,14 @@ def main():
     sp_ocr = subparsers.add_parser("ocr", help="Run Gemini Vision OCR")
     sp_ocr.add_argument("--volume", type=str, help="Process only this volume")
     sp_ocr.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
+    sp_ocr.add_argument("--local", action="store_true", help="Use local files instead of GCS")
     sp_ocr.set_defaults(func=cmd_ocr)
 
     # all
     sp_all = subparsers.add_parser("all", help="Extract + OCR")
     sp_all.add_argument("--volume", type=str, help="Process only this volume")
     sp_all.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
+    sp_all.add_argument("--local", action="store_true", help="Use local files instead of GCS")
     sp_all.set_defaults(func=cmd_all)
 
     args = parser.parse_args()
