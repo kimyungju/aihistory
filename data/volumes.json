@@ -1,0 +1,74 @@
+{
+  "volumes": [
+    {
+      "volume_id": "CO273_534",
+      "volume_ref": "CO 273/534",
+      "documents": [
+        {"ref": "CO 273/534/1", "doc_id": "GALE|DGNANX934236213"},
+        {"ref": "CO 273/534/2", "doc_id": "GALE|DILHYO671857281"},
+        {"ref": "CO 273/534/3", "doc_id": "GALE|CSHMHR268015419"},
+        {"ref": "CO 273/534/4", "doc_id": "GALE|EDTCCU865908829"},
+        {"ref": "CO 273/534/5", "doc_id": "GALE|JZTKBH893572837"},
+        {"ref": "CO 273/534/6", "doc_id": "GALE|ERHEBS489782242"},
+        {"ref": "CO 273/534/7", "doc_id": "GALE|DMNZKP175579344"},
+        {"ref": "CO 273/534/8", "doc_id": "GALE|DGNLOT250771330"},
+        {"ref": "CO 273/534/9", "doc_id": "GALE|IKKWDT908809281"},
+        {"ref": "CO 273/534/10", "doc_id": "GALE|EDTLKE029657214"},
+        {"ref": "CO 273/534/11", "doc_id": "GALE|CSMUBA316846719"},
+        {"ref": "CO 273/534/12", "doc_id": "GALE|DGQQBU998994628"},
+        {"ref": "CO 273/534/13", "doc_id": "GALE|MJPCEZ860337125"},
+        {"ref": "CO 273/534/14", "doc_id": "GALE|LZOSNS744079555"},
+        {"ref": "CO 273/534/15", "doc_id": "GALE|CXKABI031015235"},
+        {"ref": "CO 273/534/16", "doc_id": "GALE|DMOSXY732121106"},
+        {"ref": "CO 273/534/17", "doc_id": "GALE|MJOPTS132693470"},
+        {"ref": "CO 273/534/18", "doc_id": "GALE|DMTVMJ784499457"},
+        {"ref": "CO 273/534/19", "doc_id": "GALE|DMVSSM642889851"},
+        {"ref": "CO 273/534/20", "doc_id": "GALE|DMTOYR413566648"},
+        {"ref": "CO 273/534/21", "doc_id": "GALE|DFZRTY160449791"},
+        {"ref": "CO 273/534/22", "doc_id": "GALE|HEZHXH384490417"},
+        {"ref": "CO 273/534/23", "doc_id": "GALE|QULDKF510213055"},
+        {"ref": "CO 273/534/24", "doc_id": "GALE|DMUUOQ115689560"},
+        {"ref": "CO 273/534/25", "doc_id": "GALE|EIHABS861721204"},
+        {"ref": "CO 273/534/26", "doc_id": "GALE|MJPVBI697926288"}
+      ]
+    },
+    {
+      "volume_id": "CO273_550",
+      "volume_ref": "CO 273/550",
+      "documents": [
+        {"ref": "CO 273/550/1", "doc_id": "GALE|EDTYWF261783478"},
+        {"ref": "CO 273/550/2", "doc_id": "GALE|FBVGNW419326340"},
+        {"ref": "CO 273/550/3", "doc_id": "GALE|FFZYEF945794879"},
+        {"ref": "CO 273/550/4", "doc_id": "GALE|JQUGMX943033504"},
+        {"ref": "CO 273/550/5", "doc_id": "GALE|KPXHKJ348386561"},
+        {"ref": "CO 273/550/6", "doc_id": "GALE|QQSMQC290396106"},
+        {"ref": "CO 273/550/7", "doc_id": "GALE|JQUAKB622552235"},
+        {"ref": "CO 273/550/8", "doc_id": "GALE|DQDUIG435026382"},
+        {"ref": "CO 273/550/10", "doc_id": "GALE|QPUATR077633750"},
+        {"ref": "CO 273/550/11", "doc_id": "GALE|LKZQAO644272410"},
+        {"ref": "CO 273/550/12", "doc_id": "GALE|HFBHWW248910447"},
+        {"ref": "CO 273/550/13", "doc_id": "GALE|EROSHY833046759"},
+        {"ref": "CO 273/550/14", "doc_id": "GALE|OBJIPT086972604"},
+        {"ref": "CO 273/550/15", "doc_id": "GALE|JQUPGM649729242"},
+        {"ref": "CO 273/550/16", "doc_id": "GALE|JQVIPO329959904"},
+        {"ref": "CO 273/550/17", "doc_id": "GALE|JQVWNK928362624"},
+        {"ref": "CO 273/550/18", "doc_id": "GALE|QQTDXP780973238"},
+        {"ref": "CO 273/550/19", "doc_id": "GALE|CTMHQA955302366"},
+        {"ref": "CO 273/550/20", "doc_id": "GALE|JQUXMF212308569"},
+        {"ref": "CO 273/550/21", "doc_id": "GALE|JQWRTD802492951"}
+      ]
+    },
+    {
+      "volume_id": "CO273_579",
+      "volume_ref": "CO 273/579",
+      "documents": [
+        {"ref": "CO 273/579/1", "doc_id": "GALE|OXZOGV365061240"},
+        {"ref": "CO 273/579/2", "doc_id": "GALE|DLVYDK046202756"},
+        {"ref": "CO 273/579/3", "doc_id": "GALE|RYQRNO117681106"},
+        {"ref": "CO 273/579/4", "doc_id": "GALE|LBYSJJ528199212"},
+        {"ref": "CO 273/579/5", "doc_id": "GALE|XYCKFZ499408354"},
+        {"ref": "CO 273/579/6", "doc_id": "GALE|VIDELC500601384"}
+      ]
+    }
+  ]
+}

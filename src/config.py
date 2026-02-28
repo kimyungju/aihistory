@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -23,20 +24,27 @@ GALE_PROD_ID = "SPOC"
 GALE_PRODUCT_CODE = "SPOC-3"
 GALE_USER_GROUP = "nuslib"
 
-# Target volumes: {volume_id: {"search_url": str}}
-# search_url is the Gale faceted search URL listing all documents in this volume.
-# Fill these in from the Gale sidebar facet filter URLs.
-VOLUMES = {
-    "CO273_534": {
-        "search_url": "",  # TODO: paste from Gale volume facet filter
-    },
-    "CO273_550": {
-        "search_url": "",  # TODO: paste from Gale volume facet filter
-    },
-    "CO273_579": {
-        "search_url": "",  # TODO: paste from Gale volume facet filter
-    },
-}
+# Volume configuration — loaded from data/volumes.json
+VOLUMES_JSON = PROJECT_ROOT / "data" / "volumes.json"
+
+
+def load_volumes() -> dict:
+    """Load volume config from data/volumes.json.
+
+    Returns {volume_id: {"doc_ids": [...], "volume_ref": "..."}}.
+    """
+    with open(VOLUMES_JSON) as f:
+        data = json.load(f)
+    return {
+        v["volume_id"]: {
+            "doc_ids": [d["doc_id"] for d in v["documents"]],
+            "volume_ref": v.get("volume_ref", ""),
+        }
+        for v in data["volumes"]
+    }
+
+
+VOLUMES = load_volumes()
 
 # Scraper settings
 DOWNLOAD_DELAY = 1.5  # seconds between requests

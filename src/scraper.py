@@ -16,6 +16,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from src.config import (
+    GALE_BASE_URL,
     PDF_DOWNLOAD_URL,
     TEXT_DOWNLOAD_URL,
     GALE_PROD_ID,
@@ -224,7 +225,7 @@ def save_manifest(path: Path, data: dict) -> None:
 def scrape_volume(
     session: requests.Session,
     volume_id: str,
-    search_url: str,
+    doc_ids: list[str],
     output_dir: Path,
     resume: bool = True,
     download_text: bool = True,
@@ -232,8 +233,8 @@ def scrape_volume(
     """Orchestrate the full download of a Gale volume.
 
     Steps:
-    1. Extract CSRF token from search page
-    2. Discover all document IDs via paginated search
+    1. Extract CSRF token from a Gale page
+    2. Use provided doc_ids (from data/volumes.json)
     3. Download each document as PDF (and optionally text)
     4. Track progress in manifest, saving after each download
 
@@ -253,17 +254,16 @@ def scrape_volume(
 
     manifest["volume_id"] = volume_id
 
-    # Step 1: extract CSRF
+    # Step 1: extract CSRF from any Gale page
     print(f"[{volume_id}] Extracting CSRF token...")
-    csrf_token = extract_csrf_token(session, search_url)
+    csrf_url = f"{GALE_BASE_URL}/ps/start.do?prodId={GALE_PROD_ID}&userGroupName={GALE_USER_GROUP}"
+    csrf_token = extract_csrf_token(session, csrf_url)
 
-    # Step 2: discover doc IDs (or reuse from manifest if resuming)
+    # Step 2: use provided doc_ids (or reuse from manifest if resuming)
     if resume and manifest["doc_ids"]:
         doc_ids = manifest["doc_ids"]
         print(f"[{volume_id}] Resuming with {len(doc_ids)} known documents")
     else:
-        print(f"[{volume_id}] Discovering document IDs...")
-        doc_ids = discover_doc_ids(session, search_url)
         manifest["doc_ids"] = doc_ids
 
     manifest["total_documents"] = len(doc_ids)

@@ -15,6 +15,7 @@ pdfs/
 
 # GCS credentials
 *.json
+!data/volumes.json
 !.env.example
 
 # IDE

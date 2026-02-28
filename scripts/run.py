@@ -40,7 +40,7 @@ def cmd_scrape(args):
         scrape_volume(
             session=session,
             volume_id=volume_id,
-            search_url=vol_config["search_url"],
+            doc_ids=vol_config["doc_ids"],
             output_dir=DOWNLOAD_DIR,
             resume=args.resume,
             download_text=download_text,
