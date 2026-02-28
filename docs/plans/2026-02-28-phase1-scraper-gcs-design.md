@@ -21,6 +21,7 @@ Phase 1 isolates NUS authentication to one team member. Everything downstream re
 |--------|-------|--------|
 | CO273/534 | 1,436 | Gale Primary Sources (SPOC) via NUS Library Proxy |
 | CO273/550 | 460 | Gale Primary Sources (SPOC) via NUS Library Proxy |
+| CO273/579 | 842 | Gale Primary Sources (SPOC) via NUS Library Proxy |
 
 Theme: "Commodities and Capitalism"
 
@@ -46,7 +47,7 @@ Upload to GCS
 - Selenium handles NUS SSO login (visible browser for 2FA/SAML)
 - Session cookies transferred to `requests.Session`
 - `requests` downloads page images from Gale's internal API endpoints
-- Faster and lighter than full browser automation for ~1,896 pages
+- Faster and lighter than full browser automation for ~2,738 pages
 
 ## Project Structure
 
@@ -123,6 +124,7 @@ aihistory/
 VOLUMES = {
     "CO273_534": {"gale_id": "TBD", "pages": 1436},
     "CO273_550": {"gale_id": "TBD", "pages": 460},
+    "CO273_579": {"gale_id": "TBD", "pages": 842},
 }
 DOWNLOAD_DELAY = 1.5  # seconds between requests
 MAX_RETRIES = 3
@@ -174,4 +176,4 @@ python-dotenv
 | Gale API endpoint changes | Document endpoints; alert on download failures |
 | NUS SSO session expires mid-download | Resume support via manifest tracking |
 | Rate limiting / IP blocking | Conservative delays; resume support |
-| Large download size (~1,900 pages) | Stream downloads; don't load all in memory |
+| Large download size (~2,738 pages) | Stream downloads; don't load all in memory |

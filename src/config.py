@@ -19,6 +19,7 @@ GALE_BASE_URL = os.getenv(
 VOLUMES = {
     "CO273_534": {"gale_id": "", "pages": 1436},
     "CO273_550": {"gale_id": "", "pages": 460},
+    "CO273_579": {"gale_id": "", "pages": 842},
 }
 
 # Scraper settings

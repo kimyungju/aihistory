@@ -12,7 +12,7 @@ Four-phase pipeline:
 3. **Index Generation** — NER, topic modeling, embeddings
 4. **RAG Chatbot** — Vector search + Gemini Q&A + citations
 
-Target data: CO273/534 (1,436 pages), CO273/550 (460 pages).
+Target data: CO273/534 (1,436 pages), CO273/550 (460 pages), CO273/579 (842 pages).
 
 ## Commands
 
@@ -50,7 +50,7 @@ NUS authentication is isolated to `src/auth.py`. Everything downstream (OCR, ind
 
 ## Key Design Decisions
 
-- **Hybrid Selenium + Requests**: Selenium only for NUS SSO login (supports 2FA/SAML). The actual page downloads use `requests` with extracted cookies — much faster for ~1,900 pages.
+- **Hybrid Selenium + Requests**: Selenium only for NUS SSO login (supports 2FA/SAML). The actual page downloads use `requests` with extracted cookies — much faster for ~2,738 pages.
 - **Resume support**: `manifest.json` in each volume directory tracks downloaded/failed pages. The `--resume` flag skips already-downloaded pages.
 - **Gale API endpoints**: Must be discovered manually via Chrome DevTools network inspection. Endpoint patterns go in `src/scraper.py` (`PAGE_URL_TEMPLATE`); volume Gale IDs go in `src/config.py` (`VOLUMES` dict). See `docs/gale-api-notes.md`.
 - **GCS bucket** `aihistory-co273` in `asia-southeast1`. Auth via service account JSON key (path in `.env`).

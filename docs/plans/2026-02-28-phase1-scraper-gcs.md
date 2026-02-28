@@ -127,6 +127,7 @@ GALE_BASE_URL = os.getenv(
 VOLUMES = {
     "CO273_534": {"gale_id": "", "pages": 1436},
     "CO273_550": {"gale_id": "", "pages": 460},
+    "CO273_579": {"gale_id": "", "pages": 842},
 }
 
 # Scraper settings
@@ -1130,7 +1131,7 @@ Verify 5 page images download correctly to `pdfs/CO273_534/pages/`
 
 **Step 4: Run full download**
 
-Once the 5-page test succeeds, run full download for both volumes:
+Once the 5-page test succeeds, run full download for all three volumes:
 ```bash
 python -m scripts.run scrape --resume
 ```
@@ -1147,7 +1148,8 @@ python -m scripts.run upload
 Check bucket contents in Cloud Console. Confirm:
 - `CO273_534/pages/` has 1,436 images
 - `CO273_550/pages/` has 460 images
-- Both `*_full.pdf` files exist
+- `CO273_579/pages/` has 842 images
+- All three `*_full.pdf` files exist
 
 **Step 7: Final commit**
 
@@ -1164,5 +1166,5 @@ git commit -m "feat: configure real Gale API endpoints and verify download"
 - [ ] `python -m scripts.run scrape` — authenticates and downloads pages
 - [ ] `python -m scripts.run build` — creates per-volume PDFs
 - [ ] `python -m scripts.run upload` — uploads to GCS
-- [ ] GCS bucket contains all page images + PDFs for both volumes
+- [ ] GCS bucket contains all page images + PDFs for all three volumes
 - [ ] A non-NUS collaborator can read from the bucket using a viewer service account
