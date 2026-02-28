@@ -151,18 +151,13 @@ def download_document_pdf(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Server requires all form fields (hidden fields not shown in DevTools)
     data = {
         "prodId": GALE_PROD_ID,
         "userGroupName": GALE_USER_GROUP,
-        "title": "",
         "downloadAction": "DO_DOWNLOAD_DOCUMENT",
-        "disclaimerDisabled": "false",
-        "asid": "",
-        "accessLevel": "",
-        "deliveryType": "DownLoad",
         "retrieveFormat": "PDF",
-        "productCode": "",
+        "deliveryType": "DownLoad",
+        "disclaimerDisabled": "false",
         "docId": doc_id,
         "_csrf": csrf_token,
     }
