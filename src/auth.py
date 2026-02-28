@@ -15,23 +15,28 @@ from selenium.webdriver.common.by import By
 from src.config import GALE_BASE_URL
 
 
-def extract_cookies_from_driver(driver) -> dict[str, str]:
-    """Extract cookies from Selenium WebDriver as a name->value dict."""
-    selenium_cookies = driver.get_cookies()
-    return {c["name"]: c["value"] for c in selenium_cookies}
+def extract_cookies_from_driver(driver) -> list[dict]:
+    """Extract cookies from Selenium WebDriver with domain/path info."""
+    return driver.get_cookies()
 
 
-def create_session_with_cookies(cookies: dict[str, str]) -> requests.Session:
-    """Create a requests.Session pre-loaded with cookies and headers."""
+def create_session_with_cookies(cookies: list[dict]) -> requests.Session:
+    """Create a requests.Session pre-loaded with cookies (including domains) and headers."""
     session = requests.Session()
-    for name, value in cookies.items():
-        session.cookies.set(name, value)
+    for c in cookies:
+        session.cookies.set(
+            c["name"],
+            c["value"],
+            domain=c.get("domain", ""),
+            path=c.get("path", "/"),
+        )
     session.headers.update({
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/120.0.0.0 Safari/537.36"
         ),
+        "Origin": GALE_BASE_URL,
     })
     return session
 
@@ -65,11 +70,15 @@ def authenticate_gale() -> requests.Session:
             and "auth" not in d.current_url.lower()
         )
 
-        # Give a moment for all cookies to settle
-        time.sleep(2)
+        # Navigate to a Gale product page to trigger JSESSIONID cookie
+        product_url = f"{GALE_BASE_URL}/ps/start.do?prodId=SPOC&userGroupName=nuslib"
+        print("Navigating to Gale product page for session cookies...")
+        driver.get(product_url)
+        time.sleep(3)
 
         cookies = extract_cookies_from_driver(driver)
-        print(f"Login successful. Captured {len(cookies)} cookies.")
+        cookie_names = sorted(c["name"] for c in cookies)
+        print(f"Login successful. Captured {len(cookies)} cookies: {cookie_names}")
 
         session = create_session_with_cookies(cookies)
         return session
