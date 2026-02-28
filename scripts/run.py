@@ -10,7 +10,7 @@ Usage:
 import argparse
 from src.config import VOLUMES, DOWNLOAD_DIR
 from src.auth import authenticate_gale
-from src.scraper import scrape_volume
+from src.scraper import scrape_volume, extract_csrf_token, download_document_pdf, download_document_text, _visit_document_page
 from src.pdf_builder import merge_pdfs
 from src.gcs_upload import upload_all_volumes, list_bucket_contents
 
@@ -82,6 +82,124 @@ def cmd_upload(args):
         print(f"  ... and {len(contents) - 20} more")
 
 
+def cmd_test(args):
+    """Test download of a single document to verify auth and endpoint work."""
+    from src.config import GALE_BASE_URL, GALE_PROD_ID, GALE_USER_GROUP
+
+    print("=== Test Mode: Single Document Download ===")
+    session = authenticate_gale()
+
+    test_doc_id = args.doc_id or "GALE|LBYSJJ528199212"
+    test_dir = DOWNLOAD_DIR / "_test"
+
+    print(f"\nSession cookies: {sorted(session.cookies.keys())}")
+
+    csrf_url = f"{GALE_BASE_URL}/ps/start.do?prodId={GALE_PROD_ID}&userGroupName={GALE_USER_GROUP}"
+    print(f"\nExtracting CSRF token from {csrf_url}...")
+    csrf_token = extract_csrf_token(session, csrf_url)
+    print(f"CSRF token: {csrf_token[:20]}...")
+
+    print(f"\nVisiting document page for {test_doc_id}...")
+    _visit_document_page(session, test_doc_id)
+
+    print(f"\nDownloading PDF for {test_doc_id}...")
+    pdf_ok = download_document_pdf(session, test_doc_id, csrf_token, test_dir / "documents")
+
+    print(f"\nDownloading text for {test_doc_id}...")
+    text_ok = download_document_text(session, test_doc_id, csrf_token, test_dir / "text")
+
+    print(f"\n=== Results ===")
+    print(f"PDF download: {'SUCCESS' if pdf_ok else 'FAILED'}")
+    print(f"Text download: {'SUCCESS' if text_ok else 'FAILED'}")
+
+    if pdf_ok:
+        from src.scraper import sanitize_doc_id
+        pdf_file = test_dir / "documents" / f"{sanitize_doc_id(test_doc_id)}.pdf"
+        size = pdf_file.stat().st_size
+        print(f"PDF size: {size:,} bytes ({size/1024:.1f} KB)")
+        if size < 5000:
+            print("WARNING: File is very small - may be a disclaimer")
+        else:
+            print("File size looks good - appears to be a real document")
+
+    # Debug: inspect the document page for forms, images, and download links
+    print(f"\n=== Debug: Inspecting document page ===")
+    _debug_document_page(session, test_doc_id)
+
+
+def _debug_document_page(session, doc_id):
+    """Inspect a Gale document page to discover real download mechanisms."""
+    import re
+    from bs4 import BeautifulSoup
+    from src.config import GALE_BASE_URL, GALE_PROD_ID, GALE_USER_GROUP
+
+    encoded_id = doc_id.replace("|", "%7C")
+    url = (
+        f"{GALE_BASE_URL}/ps/retrieve.do"
+        f"?tabID=Manuscripts&prodId={GALE_PROD_ID}"
+        f"&userGroupName={GALE_USER_GROUP}"
+        f"&docId={encoded_id}"
+    )
+    print(f"Fetching: {url}")
+    resp = session.get(url, headers={"Accept": "text/html"})
+    print(f"Status: {resp.status_code}, Size: {len(resp.text)} chars")
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Find all forms
+    forms = soup.find_all("form")
+    print(f"\n--- Found {len(forms)} forms ---")
+    for i, form in enumerate(forms):
+        action = form.get("action", "(no action)")
+        method = form.get("method", "GET")
+        form_id = form.get("id", "(no id)")
+        inputs = form.find_all("input")
+        print(f"\nForm {i}: id={form_id} method={method} action={action}")
+        for inp in inputs:
+            name = inp.get("name", "?")
+            val = inp.get("value", "")
+            itype = inp.get("type", "text")
+            if val and len(val) > 80:
+                val = val[:80] + "..."
+            print(f"  {itype}: {name} = {val}")
+
+    # Find image URLs referencing luna-gale-com or imgsrv
+    print(f"\n--- Image URLs ---")
+    for img in soup.find_all("img"):
+        src = img.get("src", "")
+        if "luna" in src or "imgsrv" in src or "FastFetch" in src:
+            print(f"  IMG: {src}")
+    for script in soup.find_all("script"):
+        text = script.string or ""
+        for match in re.findall(r'(https?://[^\s"\']+(?:luna|imgsrv|FastFetch)[^\s"\']*)', text):
+            print(f"  JS: {match}")
+
+    # Dump relevant JS snippets containing image/download/pdf keywords
+    print(f"\n--- JS snippets with image/download info ---")
+    for script in soup.find_all("script"):
+        text = script.string or ""
+        if not text:
+            continue
+        # Look for image-related JS
+        for kw in ["FastFetch", "UBER2", "imgsrv", "imageUrl", "pageImage", "pageNum", "totalPages", "numPages", "pdfUrl", "downloadUrl", "callistoUrl", "BulkPDF"]:
+            if kw.lower() in text.lower():
+                # Extract surrounding context
+                idx = text.lower().find(kw.lower())
+                start = max(0, idx - 100)
+                end = min(len(text), idx + 200)
+                snippet = text[start:end].replace("\n", " ").strip()
+                print(f"  [{kw}]: ...{snippet}...")
+                break  # One snippet per script block
+
+    # Find any links with "download" or "pdf" in them
+    print(f"\n--- Download links ---")
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        text = a.get_text(strip=True)[:60]
+        if any(kw in href.lower() for kw in ["download", "pdf", "callisto", "uber", "bulk"]):
+            print(f"  <a href='{href}'>{text}</a>")
+
+
 def cmd_all(args):
     """Run full pipeline: scrape → build → upload."""
     cmd_scrape(args)
@@ -108,6 +226,11 @@ def main():
     # upload
     sp_upload = subparsers.add_parser("upload", help="Upload to GCS")
     sp_upload.set_defaults(func=cmd_upload)
+
+    # test
+    sp_test = subparsers.add_parser("test", help="Test single document download")
+    sp_test.add_argument("--doc-id", type=str, help="Specific docId to test (default: GALE|LBYSJJ528199212)")
+    sp_test.set_defaults(func=cmd_test)
 
     # all
     sp_all = subparsers.add_parser("all", help="Full pipeline")
