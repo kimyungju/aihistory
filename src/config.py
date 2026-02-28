@@ -19,6 +19,10 @@ GALE_BASE_URL = os.getenv(
 PDF_DOWNLOAD_URL = f"{GALE_BASE_URL}/ps/pdfGenerator/html"
 TEXT_DOWNLOAD_URL = f"{GALE_BASE_URL}/ps/htmlGenerator/forText"
 
+# Gale image server (different subdomain)
+IMAGE_BASE_URL = "https://luna-gale-com.libproxy1.nus.edu.sg"
+IMAGE_DOWNLOAD_URL = f"{IMAGE_BASE_URL}/imgsrv/FastFetch/UBER2"
+
 # Gale product identifiers
 GALE_PROD_ID = "SPOC"
 GALE_PRODUCT_CODE = "SPOC-3"

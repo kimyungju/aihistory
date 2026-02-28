@@ -19,12 +19,14 @@ from src.config import (
     GALE_BASE_URL,
     PDF_DOWNLOAD_URL,
     TEXT_DOWNLOAD_URL,
+    IMAGE_DOWNLOAD_URL,
     GALE_PROD_ID,
     GALE_PRODUCT_CODE,
     GALE_USER_GROUP,
     DOWNLOAD_DELAY,
     MAX_RETRIES,
     PDF_DOWNLOAD_TIMEOUT,
+    REQUEST_TIMEOUT,
     SEARCH_RESULTS_PER_PAGE,
 )
 
@@ -267,6 +269,48 @@ def download_document_text(
 
     except Exception as e:
         print(f"  Failed to download text for {doc_id}: {e}")
+        return False
+
+
+def download_page_image(
+    session: requests.Session,
+    encoded_id: str,
+    output_dir: Path,
+    page_num: int,
+) -> bool:
+    """Download a single page image from Gale's image server.
+
+    GETs from IMAGE_DOWNLOAD_URL/{encoded_id} with format=jpeg.
+    Saves as output_dir/page_NNNN.jpg.
+    Returns True on success, False on failure.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    url = f"{IMAGE_DOWNLOAD_URL}/{encoded_id}"
+    params = {
+        "legacy": "no",
+        "scale": "1.0",
+        "format": "jpeg",
+    }
+
+    try:
+        response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+
+        if len(response.content) < 1000:
+            print(f"  Warning: page image {page_num} is only {len(response.content)} bytes")
+            return False
+
+        filename = f"page_{page_num:04d}.jpg"
+        filepath = output_dir / filename
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+
+        size_kb = len(response.content) / 1024
+        print(f"  Saved {filename} ({size_kb:.1f} KB)")
+        return True
+
+    except Exception as e:
+        print(f"  Failed to download page image {page_num}: {e}")
         return False
 
 

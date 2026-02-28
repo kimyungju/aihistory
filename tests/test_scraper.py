@@ -9,6 +9,7 @@ from src.scraper import (
     discover_doc_ids,
     download_document_pdf,
     download_document_text,
+    download_page_image,
     load_manifest,
     save_manifest,
 )
@@ -309,3 +310,24 @@ def test_manifest_roundtrip(tmp_path):
     assert "failed_pdfs" in empty
     assert "failed_texts" in empty
     assert empty["total_documents"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 11. test_download_page_image_success
+# ---------------------------------------------------------------------------
+
+def test_download_page_image_success(tmp_path):
+    """Downloads a JPEG page image and saves it."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"\xff\xd8\xff" + b"x" * 5000  # JPEG header + data
+    response.headers = {"Content-Type": "image/jpeg"}
+    response.ok = True
+    session.get.return_value = response
+
+    result = download_page_image(session, "ENCODED_ID_123", tmp_path, page_num=1)
+    assert result is True
+    saved = tmp_path / "page_0001.jpg"
+    assert saved.exists()
+    assert len(saved.read_bytes()) > 1000
