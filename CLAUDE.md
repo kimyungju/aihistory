@@ -39,9 +39,10 @@ python -m scripts.run all [--resume]     # full pipeline
 ```
 NUS SSO (Selenium, visible browser)
     → extract cookies → requests.Session
-    → download page images from Gale API (1.5s delay between requests)
-    → save to pdfs/{volume_id}/pages/page_NNNN.{ext}
-    → manifest.json per volume tracks progress for resume
+    → download PDF parts per volume from Gale API (1.5s delay)
+    → extract pages from parts as images, renumber continuously
+    → save to pdfs/{volume_id}/images/page_NNNN.jpg
+    → manifest.json per volume tracks parts + pages for resume
     → build per-volume PDF from images (Pillow + pypdf)
     → upload to gs://aihistory-co273/{volume_id}/
 ```
@@ -50,8 +51,9 @@ NUS authentication is isolated to `src/auth.py`. Everything downstream (OCR, ind
 
 ## Key Design Decisions
 
-- **Hybrid Selenium + Requests**: Selenium only for NUS SSO login (supports 2FA/SAML). The actual page downloads use `requests` with extracted cookies — much faster for ~2,738 pages.
-- **Resume support**: `manifest.json` in each volume directory tracks downloaded/failed pages. The `--resume` flag skips already-downloaded pages.
+- **Gale split-PDF reassembly**: Gale splits each volume into multiple PDF parts. The scraper downloads all parts, extracts pages as images, and renumbers them into a continuous sequence per volume. `metadata.json` tracks part-to-page mapping for traceability.
+- **Hybrid Selenium + Requests**: Selenium only for NUS SSO login (supports 2FA/SAML). The actual downloads use `requests` with extracted cookies — much faster for ~2,738 pages.
+- **Resume support**: `manifest.json` in each volume directory tracks downloaded parts and extracted pages. The `--resume` flag skips already-completed work.
 - **Gale API endpoints**: Must be discovered manually via Chrome DevTools network inspection. Endpoint patterns go in `src/scraper.py` (`PAGE_URL_TEMPLATE`); volume Gale IDs go in `src/config.py` (`VOLUMES` dict). See `docs/gale-api-notes.md`.
 - **GCS bucket** `aihistory-co273` in `asia-southeast1`. Auth via service account JSON key (path in `.env`).
 
@@ -65,9 +67,13 @@ Environment variables in `.env` (see `.env.example`):
 
 Scraper tuning constants are in `src/config.py`: `DOWNLOAD_DELAY`, `MAX_RETRIES`, `REQUEST_TIMEOUT`.
 
-## Plans
+## Session Start
 
-Design docs and implementation plans live in `docs/plans/`. Read these before starting work on any phase — they contain architecture decisions, task breakdowns, and verification checklists.
+At the start of every new session, read these before doing anything:
+1. `dev/active/` — current task status, context, and checklists
+2. `docs/plans/` — design docs and implementation plans
+
+These files contain architecture decisions, task breakdowns, and progress tracking that persist across sessions.
 
 ## Project Status
 
