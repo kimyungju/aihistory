@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS — Key Context
 
-**Last Updated: 2026-02-28 (session 2 — workflow discussion)**
+**Last Updated: 2026-02-28 (session 3 — GCP setup walkthrough)**
 
 ---
 
@@ -8,51 +8,91 @@
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `docs/plans/2026-02-28-phase1-scraper-gcs-design.md` | Design document (approved) | Created |
-| `docs/plans/2026-02-28-phase1-scraper-gcs.md` | Full implementation plan with code | Created |
+| `docs/plans/2026-02-28-phase1-scraper-gcs-design.md` | Design document (approved) | ✅ Created |
+| `docs/plans/2026-02-28-phase1-scraper-gcs.md` | Original impl plan (partially outdated after rewrite) | ✅ Created |
+| `docs/plans/2026-02-28-gcp-setup-and-testing-design.md` | GCP + testing design | ✅ Created (uncommitted) |
 | `pyproject.toml` | Project deps & metadata | ✅ Created |
-| `src/config.py` | Volume definitions, GCS/Gale settings | ✅ Created (51 lines) |
-| `src/auth.py` | NUS SSO auth → cookie extraction | ✅ Created (78 lines) |
-| `src/scraper.py` | Gale page image download | ✅ Created (325 lines) |
-| `src/pdf_builder.py` | Combine images → PDF | ✅ Created (44 lines) |
-| `src/gcs_upload.py` | Upload to GCS | ✅ Created (77 lines) |
-| `scripts/run.py` | CLI entry point | ✅ Created |
-| `tests/test_auth.py` | Auth unit tests | ✅ Created |
-| `tests/test_scraper.py` | Scraper unit tests | ✅ Created |
-| `tests/test_pdf_builder.py` | PDF builder unit tests | ✅ Created |
-| `tests/test_gcs_upload.py` | GCS upload unit tests | ✅ Created |
-| `.env` | Secrets (GCS key, bucket) | To create (gitignored) |
-| `docs/gale-api-notes.md` | API endpoint discovery notes | To create (manual) |
+| `src/config.py` | Volume definitions, GCS/Gale settings (52 lines) | ✅ Created — **search_url values still empty** |
+| `src/auth.py` | NUS SSO auth → cookie extraction (78 lines) | ✅ Created |
+| `src/scraper.py` | **REWRITTEN** — document-level PDF/text download | ✅ Rewritten |
+| `src/pdf_builder.py` | **REWRITTEN** — pypdf merge (was Pillow image→PDF) | ✅ Rewritten |
+| `src/gcs_upload.py` | Upload to GCS (77 lines) | ✅ Created |
+| `scripts/run.py` | CLI: scrape/build/upload/all with --resume/--no-text/--volume | ✅ Updated |
+| `tests/test_auth.py` | 2 auth tests | ✅ Created |
+| `tests/test_scraper.py` | **REWRITTEN** — 10 tests with HTML fixtures | ✅ Rewritten |
+| `tests/test_pdf_builder.py` | **REWRITTEN** — 2 tests for PDF merge | ✅ Rewritten |
+| `tests/test_gcs_upload.py` | 2 GCS upload tests | ✅ Created |
+| `.env` | Secrets (GCS key, bucket) | **Not yet created** |
+| `credentials/gcs-key.json` | GCS service account key | **Not yet created** |
+
+**Total: 16/16 tests passing**
 
 ---
 
 ## Critical Decisions
 
-### 1. Hybrid Selenium + Requests (chosen over full Selenium or manual download)
-- **Why**: Selenium just for SSO auth, requests for fast downloads
-- **Trade-off**: Requires manual API endpoint discovery, but ~10x faster for 1,896 pages
-- **Fallback**: If API can't be reverse-engineered, fall back to full Selenium automation
+### 1. Document-Level Download (not page-by-page)
+- **Discovery**: Gale has POST endpoints for entire document PDFs and OCR text
+- **Impact**: ~50x faster (1 request per multi-page document vs 1 per page)
+- **Rewrite**: scraper.py completely rewritten, pdf_builder.py changed from image→PDF to PDF merge
 
-### 2. NUS Auth Isolation
+### 2. Hybrid Selenium + Requests
+- **Why**: Selenium just for SSO auth, requests.Session for fast downloads
+- **Auth flow**: Chrome visible browser → NUS SSO login → extract cookies → requests.Session
+
+### 3. NUS Auth Isolation
 - **Design**: Only one NUS team member runs the scraper
 - **Everything downstream reads from GCS** — no NUS auth needed
-- **Enables**: collaborators, judges, demo without NUS credentials
 
-### 3. Resume Support via Manifest
-- **Why**: Downloading 1,896 pages takes time; session may expire
-- **How**: `manifest.json` tracks downloaded/failed pages per volume
-- **CLI**: `--resume` flag skips already-downloaded pages
+### 4. Resume Support via Manifest (document-level)
+- **Schema**: manifest.json tracks doc_ids, downloaded_pdfs/texts, failed_pdfs/texts per volume
+- **CLI**: `--resume` flag skips already-downloaded documents
 
-### 4. GCS Bucket Structure
+### 5. GCS Bucket Structure (updated for document-level)
 ```
 gs://aihistory-co273/
-├── CO273_534/pages/     ← individual page images (for OCR pipeline)
-├── CO273_534/full.pdf   ← assembled PDF (for human viewing)
-├── CO273_550/pages/
-├── CO273_550/full.pdf
+├── CO273_534/documents/    ← individual document PDFs
+├── CO273_534/text/         ← OCR text per document
+├── CO273_534/CO273_534_full.pdf  ← merged volume PDF
+├── CO273_550/...
+├── CO273_579/...
 └── metadata/volumes.json
 ```
-Both page images AND assembled PDFs stored — pages for downstream OCR, PDFs for human reference.
+
+---
+
+## Gale API Endpoints (Discovered in Session 2)
+
+### PDF Download
+- **URL**: POST `https://go-gale-com.libproxy1.nus.edu.sg/ps/pdfGenerator/html`
+- **Form data**: `prodId=SPOC`, `userGroupName=nuslib`, `downloadAction=DO_DOWNLOAD_DOCUMENT`, `retrieveFormat=PDF`, `docId=GALE|...`, `_csrf=TOKEN`
+
+### OCR Text Download
+- **URL**: POST `https://go-gale-com.libproxy1.nus.edu.sg/ps/htmlGenerator/forText`
+- **Form data**: `retrieveFormat=PLAIN_TEXT`, `productCode=SPOC-3`, `docId=GALE|...`, `accessLevel=FULLTEXT`
+
+### CSRF Token
+- Found in hidden form field `<input name='_csrf' value='...'>`
+- Also in `XSRF-TOKEN` cookie (same value)
+- Extracted by `scraper.py:extract_csrf_token()`
+
+### Document Discovery
+- Paginate search results, extract GALE|... docIds from links via BeautifulSoup
+- `scraper.py:discover_doc_ids()` handles pagination
+
+---
+
+## Scraper Functions (post-rewrite)
+
+| Function | Purpose |
+|----------|---------|
+| `sanitize_doc_id(doc_id)` | "GALE\|..." → "GALE_..." for filenames |
+| `extract_csrf_token(session, url)` | Parse hidden input, fallback to cookie |
+| `discover_doc_ids(session, search_url)` | Paginate search, extract all docIds |
+| `download_document_pdf(session, doc_id, csrf_token, output_dir)` | POST for PDF |
+| `download_document_text(session, doc_id, csrf_token, output_dir)` | POST for text |
+| `load_manifest(path)` / `save_manifest(path, data)` | JSON manifest I/O |
+| `scrape_volume(session, volume_id, search_url, output_dir, resume, download_text)` | Orchestrator |
 
 ---
 
@@ -64,72 +104,30 @@ config.py ← pdf_builder.py       ← run.py (build command)
 config.py ← gcs_upload.py        ← run.py (upload command)
 ```
 
-- `auth.py` and `scraper.py` share session management
-- `pdf_builder.py` and `gcs_upload.py` are independent of each other
-- All modules import from `config.py`
-- `run.py` orchestrates all modules
+---
+
+## Current Blockers
+
+1. **search_url values empty** in `src/config.py` lines 31, 34, 37 — user needs to find volume-specific URLs from Gale sidebar facet filters
+2. **GCP project not created** — user walking through GCP Console setup
+3. **`.env` file not created** — depends on GCP service account key
 
 ---
 
-## External Dependencies
+## Environment
 
-| Dependency | Version | Purpose |
-|-----------|---------|---------|
-| selenium | >=4.15.0 | Browser automation for NUS SSO |
-| requests | >=2.31.0 | HTTP downloads from Gale API |
-| beautifulsoup4 | >=4.12.0 | HTML parsing (if needed) |
-| lxml | >=5.0.0 | Fast HTML parser backend |
-| pypdf | >=3.17.0 | PDF reading/validation |
-| Pillow | >=10.0.0 | Image → PDF conversion |
-| google-cloud-storage | >=2.14.0 | GCS upload/list |
-| python-dotenv | >=1.0.0 | .env file loading |
-| pytest | >=7.4.0 | Testing (dev) |
+- Python: `/c/Users/yjkim/AppData/Local/Microsoft/WindowsApps/python3.exe` (3.14.3)
+- Venv: `source .venv/Scripts/activate`
+- No gcloud CLI — GCP setup via Cloud Console web UI
+- Git: 12 commits on main branch
 
 ---
 
-## Agent Team Assignments
+## Next Steps (for new session)
 
-### Team Lead (this session)
-- Task 1: Project scaffolding
-- Task 7: CLI entry point
-- Task 8: Smoke test
-- Task 10: Integration test
-- Code review of agent outputs
-
-### Agent 1: "auth-scraper"
-- Task 2: `src/auth.py` + `tests/test_auth.py`
-- Task 4: `src/scraper.py` + `tests/test_scraper.py`
-- Must follow TDD (test first, then implement)
-- Complete code provided in implementation plan
-
-### Agent 2: "pdf-gcs"
-- Task 5: `src/pdf_builder.py` + `tests/test_pdf_builder.py`
-- Task 6: `src/gcs_upload.py` + `tests/test_gcs_upload.py`
-- Must follow TDD
-- Complete code provided in implementation plan
-
-### User (Manual Tasks)
-- Task 3: Gale API endpoint discovery (Chrome DevTools)
-- Task 9: GCP project + bucket setup (Cloud Console)
-
----
-
-## Gale Source Details
-
-- **URL**: `https://go-gale-com.libproxy1.nus.edu.sg/ps/searchWithin.do?...`
-- **Collection**: CO 273: Straits Settlements Original Correspondence
-- **Product**: SPOC (State Papers Online Colonial)
-- **User group**: nuslib
-- **Auth**: NUS SSO (SAML/2FA)
-- **Viewer**: Page-by-page with download option
-- **Total records in collection**: ~42,229 (we want 2 specific volumes)
-
----
-
-## Competition Context
-
-**Challenge Objective 2**: "Digitize the scanned Kratoska Index and algorithmically link its keywords back to the specific CO 273 files as well as add more keywords and descriptions to make files more understandable."
-
-**Strategy**: Build a "New Kratoska Index" that auto-generates keywords (NER), summaries (Gemini), and semantic links (embeddings) — making the old index obsolete while remaining backward-compatible.
-
-**Phase 1 role**: Get the raw data into GCS so the rest of the pipeline can work without NUS auth.
+1. User completes GCP Console setup (project, bucket, service account, key download)
+2. Create `.env` with `GCS_KEY_PATH=credentials/gcs-key.json`
+3. User finds volume-specific search URLs from Gale sidebar facets → fill into config.py
+4. Real download test: `python -m scripts.run scrape --volume CO273_534`
+5. Full pipeline: scrape all → build → upload
+6. Verify bucket contents
