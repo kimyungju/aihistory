@@ -1,6 +1,6 @@
 # Phase 2: Enhanced OCR Pipeline — Key Context
 
-**Last Updated: 2026-02-28**
+**Last Updated: 2026-02-28 (session 4 — implementation complete)**
 
 ---
 
@@ -10,17 +10,19 @@
 |------|---------|--------|
 | `docs/plans/2026-02-28-phase2-ocr-pipeline-design.md` | Design doc | ✅ Written |
 | `docs/plans/2026-02-28-phase2-ocr-pipeline.md` | Implementation plan (full code) | ✅ Written |
-| `src/ocr/__init__.py` | Package init | ❌ Not created |
-| `src/ocr/config.py` | Gemini model, concurrency, prompt settings | ❌ Not created |
-| `src/ocr/extract.py` | PDF → page images | ❌ Not created |
-| `src/ocr/gemini_ocr.py` | Gemini Vision OCR per page | ❌ Not created |
-| `src/ocr/manifest.py` | OCR progress tracking | ❌ Not created |
-| `src/ocr/pipeline.py` | Async orchestrator | ❌ Not created |
-| `scripts/run_ocr.py` | CLI entry point | ❌ Not created |
-| `tests/test_extract.py` | Extract tests (3) | ❌ Not created |
-| `tests/test_gemini_ocr.py` | OCR tests (3) | ❌ Not created |
-| `tests/test_ocr_manifest.py` | Manifest tests (4) | ❌ Not created |
-| `tests/test_pipeline.py` | Pipeline tests (2) | ❌ Not created |
+| `src/ocr/__init__.py` | Package init | ✅ Created (adae434) |
+| `src/ocr/config.py` | Gemini model, concurrency, prompt settings | ✅ Created (adae434) |
+| `src/ocr/extract.py` | PDF → page images | ✅ Created (42deb96) |
+| `src/ocr/gemini_ocr.py` | Gemini Vision OCR per page | ✅ Created (5760de1) |
+| `src/ocr/manifest.py` | OCR progress tracking | ✅ Created (300b30f) |
+| `src/ocr/pipeline.py` | Async orchestrator | ✅ Created (a99048a) |
+| `scripts/run_ocr.py` | CLI entry point | ✅ Created (2da2d41) |
+| `tests/test_extract.py` | Extract tests (3) | ✅ Created (42deb96) |
+| `tests/test_gemini_ocr.py` | OCR tests (3) | ✅ Created (5760de1) |
+| `tests/test_ocr_manifest.py` | Manifest tests (4) | ✅ Created (300b30f) |
+| `tests/test_pipeline.py` | Pipeline tests (2) | ✅ Created (a99048a) |
+
+**All 12 Phase 2 tests pass. All code committed and pushed.**
 
 ---
 
@@ -73,14 +75,28 @@ Get a Gemini API key at: https://aistudio.google.com/apikey
 
 ---
 
-## Agent Team Strategy
+## Known Issues
 
-Two parallel agents after foundation tasks:
+### Python 3.14 + protobuf incompatibility
+- `google-cloud-storage` triggers `ImportError: cannot import name 'duration_pb2' from 'google.protobuf'` on Python 3.14.3
+- This blocks `test_gcs_upload.py` from being collected by pytest
+- **Workaround**: Run Phase 2 tests only: `python -m pytest tests/test_extract.py tests/test_ocr_manifest.py tests/test_gemini_ocr.py tests/test_pipeline.py -v`
+- Or exclude Phase 1 GCS test: `python -m pytest tests/ -v --ignore=tests/test_gcs_upload.py`
+- Agent 2 used lazy import of `google.generativeai` in `pipeline.py:get_gemini_model()` to avoid import-time crash
 
-- **Agent 1** (extract + manifest): Independent modules, no Gemini API dependency
-- **Agent 2** (gemini_ocr + pipeline): Depends on Agent 1's manifest module for Task 6
+### Python executable path
+- Not on PATH in git bash shell
+- Full path: `/c/Users/yjkim/AppData/Local/Microsoft/WindowsApps/python3.exe`
 
-Task 6 (pipeline) depends on both Tasks 4 and 5. Agent 2 should do Task 4 first, then wait for Agent 1 to finish Task 5 before starting Task 6.
+---
+
+## Agent Team Execution Summary
+
+Two parallel agents executed Tasks 3-6 successfully:
+
+- **Agent 1** (extract + manifest): Tasks 3+5 — 7 tests, 2 commits (42deb96, 300b30f)
+- **Agent 2** (gemini_ocr + pipeline): Tasks 4+6 — 5 tests, 2 commits (5760de1, a99048a)
+- **Team Lead**: Tasks 1-2 (foundation), Task 7 (CLI), Task 8 (smoke test)
 
 ---
 
@@ -88,15 +104,15 @@ Task 6 (pipeline) depends on both Tasks 4 and 5. Agent 2 should do Task 4 first,
 
 | Blocker | Status | Impact |
 |---------|--------|--------|
-| Phase 1 real data not yet downloaded | Waiting on Task 10 | Can't test on real data, but unit tests work |
+| Phase 1 real data not yet downloaded | Waiting on scraper fix | Can't test OCR on real data, but unit tests pass |
 | Gemini API key needed | User must create at aistudio.google.com | Blocks real OCR runs |
-| Volume search_url values empty | Being filled by another session | Blocks Phase 1 Task 10 |
+| protobuf/Python 3.14 incompatibility | Known issue | Phase 1 GCS tests can't run alongside Phase 2 tests |
 
 ---
 
-## Next Step
+## Next Steps
 
-Run Phase 2 implementation using agent team:
-1. Team Lead does Tasks 1-2 (dependencies + config)
-2. Spawn Agent 1 (Tasks 3+5) and Agent 2 (Tasks 4+6) in parallel
-3. Team Lead does Tasks 7-8 (CLI + smoke test)
+1. **Phase 1 scraper fix**: User needs to capture real Gale download endpoint via Chrome DevTools
+2. **Get Gemini API key**: Create at https://aistudio.google.com/apikey, add to `.env`
+3. **Task 9 (GCS integration)**: Blocked until Phase 1 uploads real PDFs to GCS bucket
+4. **Phase 3**: Index generation from OCR output (after Phase 2 runs on real data)
