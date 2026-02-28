@@ -74,11 +74,21 @@ def authenticate_gale() -> requests.Session:
         product_url = f"{GALE_BASE_URL}/ps/start.do?prodId=SPOC&userGroupName=nuslib"
         print("Navigating to Gale product page for session cookies...")
         driver.get(product_url)
-        time.sleep(3)
+
+        # Wait for JSESSIONID11_omni session cookie (up to 15 seconds)
+        for _ in range(15):
+            cookies = extract_cookies_from_driver(driver)
+            cookie_names = [c["name"] for c in cookies]
+            if "JSESSIONID11_omni" in cookie_names:
+                break
+            time.sleep(1)
 
         cookies = extract_cookies_from_driver(driver)
         cookie_names = sorted(c["name"] for c in cookies)
         print(f"Login successful. Captured {len(cookies)} cookies: {cookie_names}")
+
+        if "JSESSIONID11_omni" not in cookie_names:
+            print("  WARNING: JSESSIONID11_omni not found - downloads may return disclaimers")
 
         session = create_session_with_cookies(cookies)
         return session
