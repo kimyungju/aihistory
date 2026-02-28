@@ -199,7 +199,8 @@ def test_download_document_pdf_success(tmp_path):
     session = MagicMock()
     response = MagicMock()
     response.status_code = 200
-    response.content = b"%PDF-1.4 fake pdf content"
+    # Must be >5000 bytes to pass disclaimer size check
+    response.content = b"%PDF-1.4 " + b"x" * 6000
     response.headers = {"Content-Type": "application/pdf"}
     response.ok = True
     session.post.return_value = response
@@ -210,7 +211,13 @@ def test_download_document_pdf_success(tmp_path):
     assert result is True
     saved = tmp_path / "GALE_LBYSJJ528199212.pdf"
     assert saved.exists()
-    assert saved.read_bytes() == b"%PDF-1.4 fake pdf content"
+
+    # Verify essential fields in POST data
+    call_kwargs = session.post.call_args
+    post_data = call_kwargs.kwargs.get("data", {})
+    assert post_data["docId"] == "GALE|LBYSJJ528199212"
+    assert post_data["retrieveFormat"] == "PDF"
+    assert post_data["_csrf"] == "csrf-tok"
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +233,29 @@ def test_download_document_pdf_failure(tmp_path):
         session, "GALE|LBYSJJ528199212", "csrf-tok", tmp_path
     )
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# 8b. test_download_document_pdf_rejects_disclaimer
+# ---------------------------------------------------------------------------
+
+def test_download_document_pdf_rejects_disclaimer(tmp_path):
+    """Small PDF (<5KB) is rejected as likely disclaimer."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"%PDF-1.4 small disclaimer"  # ~25 bytes, way under 5KB
+    response.headers = {"Content-Type": "application/pdf"}
+    response.ok = True
+    session.post.return_value = response
+
+    result = download_document_pdf(
+        session, "GALE|LBYSJJ528199212", "csrf-tok", tmp_path
+    )
+    assert result is False
+    # Should NOT save the disclaimer file
+    saved = tmp_path / "GALE_LBYSJJ528199212.pdf"
+    assert not saved.exists()
 
 
 # ---------------------------------------------------------------------------

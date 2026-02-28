@@ -118,6 +118,24 @@ def discover_doc_ids(session: requests.Session, search_url: str) -> list[str]:
     return all_doc_ids
 
 
+def _visit_document_page(session: requests.Session, doc_id: str) -> None:
+    """Visit the document viewer page to establish server-side session context.
+
+    Gale may require the user to have 'visited' the document before allowing
+    PDF download (disclaimer acceptance, session binding, etc.).
+    """
+    encoded_id = doc_id.replace("|", "%7C")
+    url = (
+        f"{GALE_BASE_URL}/ps/retrieve.do"
+        f"?tabID=Manuscripts&prodId={GALE_PROD_ID}"
+        f"&userGroupName={GALE_USER_GROUP}"
+        f"&docId={encoded_id}"
+    )
+    response = session.get(url, headers={"Accept": "text/html"})
+    if response.status_code != 200:
+        print(f"  Warning: visiting doc page returned {response.status_code}")
+
+
 def download_document_pdf(
     session: requests.Session,
     doc_id: str,
@@ -126,11 +144,14 @@ def download_document_pdf(
 ) -> bool:
     """Download a document as PDF via Gale's PDF generator endpoint.
 
-    POSTs to PDF_DOWNLOAD_URL with required form data.
+    POSTs to PDF_DOWNLOAD_URL with form data matching browser exactly.
     Saves as output_dir/{sanitized_doc_id}.pdf.
     Returns True on success, False on failure.
+    Rejects suspiciously small PDFs (<5KB) as likely disclaimers.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Server requires all form fields (hidden fields not shown in DevTools)
     data = {
         "prodId": GALE_PROD_ID,
         "userGroupName": GALE_USER_GROUP,
@@ -146,15 +167,36 @@ def download_document_pdf(
         "_csrf": csrf_token,
     }
 
+    # Set Referer to the document viewer page
+    encoded_id = doc_id.replace("|", "%7C")
+    headers = {
+        "Referer": (
+            f"{GALE_BASE_URL}/ps/retrieve.do"
+            f"?tabID=Manuscripts&prodId={GALE_PROD_ID}"
+            f"&userGroupName={GALE_USER_GROUP}"
+            f"&docId={encoded_id}"
+        ),
+        "Accept": "application/pdf",
+    }
+
     try:
         response = session.post(
-            PDF_DOWNLOAD_URL, data=data, timeout=PDF_DOWNLOAD_TIMEOUT
+            PDF_DOWNLOAD_URL, data=data, headers=headers,
+            timeout=PDF_DOWNLOAD_TIMEOUT,
         )
         response.raise_for_status()
 
         content_type = response.headers.get("Content-Type", "")
-        if "pdf" not in content_type and not response.content[:5] == b"%PDF-":
+        if "pdf" not in content_type and response.content[:5] != b"%PDF-":
             print(f"  Warning: unexpected Content-Type for {doc_id}: {content_type}")
+            return False
+
+        # Reject suspiciously small PDFs (disclaimers are ~2.5KB)
+        if len(response.content) < 5000:
+            print(
+                f"  Warning: PDF too small for {doc_id} "
+                f"({len(response.content)} bytes) - likely a disclaimer"
+            )
             return False
 
         filename = f"{sanitize_doc_id(doc_id)}.pdf"
@@ -162,6 +204,8 @@ def download_document_pdf(
         with open(filepath, "wb") as f:
             f.write(response.content)
 
+        size_kb = len(response.content) / 1024
+        print(f"  Saved {filename} ({size_kb:.1f} KB)")
         return True
 
     except Exception as e:
@@ -177,11 +221,13 @@ def download_document_text(
 ) -> bool:
     """Download OCR text for a document via Gale's text extraction endpoint.
 
-    POSTs to TEXT_DOWNLOAD_URL with required form data.
+    POSTs to TEXT_DOWNLOAD_URL with form data matching browser exactly.
     Saves as output_dir/{sanitized_doc_id}.txt.
     Returns True on success, False on failure.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Server requires all form fields (hidden fields not shown in DevTools)
     data = {
         "text": "",
         "userGroupName": GALE_USER_GROUP,
@@ -196,15 +242,35 @@ def download_document_text(
         "docId": doc_id,
     }
 
+    # Set Referer to the document viewer page
+    encoded_id = doc_id.replace("|", "%7C")
+    headers = {
+        "Referer": (
+            f"{GALE_BASE_URL}/ps/retrieve.do"
+            f"?tabID=Manuscripts&prodId={GALE_PROD_ID}"
+            f"&userGroupName={GALE_USER_GROUP}"
+            f"&docId={encoded_id}"
+        ),
+        "Accept": "text/plain, text/html, */*",
+    }
+
     try:
-        response = session.post(TEXT_DOWNLOAD_URL, data=data)
+        response = session.post(
+            TEXT_DOWNLOAD_URL, data=data, headers=headers,
+        )
         response.raise_for_status()
+
+        text_content = response.text.strip()
+        if not text_content:
+            print(f"  Warning: empty text for {doc_id}")
+            return False
 
         filename = f"{sanitize_doc_id(doc_id)}.txt"
         filepath = output_dir / filename
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(response.text)
+            f.write(text_content)
 
+        print(f"  Saved {filename} ({len(text_content)} chars)")
         return True
 
     except Exception as e:
@@ -288,6 +354,11 @@ def scrape_volume(
     downloaded_texts = set(manifest["downloaded_texts"])
 
     for i, doc_id in enumerate(doc_ids, 1):
+        # Visit document page to establish session context before downloading
+        if doc_id not in downloaded_pdfs or (download_text and doc_id not in downloaded_texts):
+            _visit_document_page(session, doc_id)
+            time.sleep(1)
+
         # PDF download
         if doc_id not in downloaded_pdfs:
             print(f"  [{volume_id}] PDF {i}/{len(doc_ids)}: {doc_id}")
