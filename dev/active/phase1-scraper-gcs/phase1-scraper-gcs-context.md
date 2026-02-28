@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS — Key Context
 
-**Last Updated: 2026-02-28 (session 3 — data-driven docIds)**
+**Last Updated: 2026-02-28 (session 3 — real download test)**
 
 ---
 
@@ -8,11 +8,11 @@
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `data/volumes.json` | All 52 docIds by volume (data-driven config) | ✅ Created |
-| `src/config.py` | `load_volumes()` reads from JSON | ✅ Updated |
-| `src/scraper.py` | `scrape_volume()` accepts `doc_ids` list | ✅ Updated |
-| `scripts/run.py` | Passes `doc_ids` from config | ✅ Updated |
-| `src/auth.py` | NUS SSO auth (unchanged) | ✅ |
+| `data/volumes.json` | All 52 docIds by volume (data-driven) | ✅ Committed |
+| `src/config.py` | `load_volumes()` reads from JSON | ✅ Committed |
+| `src/scraper.py` | `scrape_volume()` accepts `doc_ids` list | **UNCOMMITTED** — form data fix |
+| `src/auth.py` | NUS SSO auth via Selenium | **UNCOMMITTED** — em dash fix |
+| `scripts/run.py` | CLI: scrape/build/upload/all | ✅ Committed |
 | `src/pdf_builder.py` | pypdf merge (unchanged) | ✅ |
 | `src/gcs_upload.py` | GCS upload (unchanged) | ✅ |
 | `.env` | GCS_KEY_PATH configured | ✅ |
@@ -21,11 +21,50 @@
 
 ---
 
+## CRITICAL: PDF Download Returns Disclaimers Only
+
+### What Happened
+The scraper ran successfully for CO273_534 (26/26 docs downloaded, 0 failures), BUT:
+- **Every PDF is exactly 2,479 bytes** (identical size)
+- **Every PDF contains only a 1-page disclaimer** from Cengage/Gale, NOT the actual scanned document
+- **All text files are 0 bytes** (empty)
+
+### Root Cause
+The POST to `/ps/pdfGenerator/html` returns a disclaimer PDF, not the real scanned document. The real download likely uses a **different endpoint or additional parameters**.
+
+### What We Know From Form Inspection
+On the document viewer page, there are 3 download-related forms:
+
+1. **Form 4**: `POST /ps/pdfGenerator/html` — this is what we're using. Returns disclaimer only.
+2. **Form 8**: `POST /ps/htmlGenerator/forText` — text extraction. Returns empty content.
+3. **Form 9**: `POST /ps/callisto/BulkPDF/UBER2` — **this might be the real PDF download**. Has fields: `dl`, `u=nuslib`, `p=SPOC`, `_csrf`.
+
+### Next Step: Investigate the Correct Download
+User needs to:
+1. Open a document in Gale viewer in their regular browser
+2. Open Chrome DevTools → Network tab
+3. Click the actual download/save button
+4. Capture the URL, method, and form data of the real download request
+5. Look especially at Form 9 (`/ps/callisto/BulkPDF/UBER2`) — this is likely the real endpoint
+
+### Error Encountered
+After the 26 downloads, user got: **"Inter-institutional access failure. Please contact your system administrator for assistance."** — likely rate limiting or session expiry from 52 rapid requests (26 PDF + 26 text).
+
+---
+
+## Uncommitted Changes (MUST COMMIT)
+
+### `src/auth.py`
+- Replaced em dash `—` with `-` in print statements (UnicodeEncodeError on Korean Windows cp949 console)
+
+### `src/scraper.py`
+- Added missing form fields to `download_document_pdf()`: `title`, `disclaimerDisabled`, `asid`, `accessLevel`, `deliveryType`, `productCode`
+- Added missing form fields to `download_document_text()`: `text`, `userGroupName`, `prodId`, `fileName`, `downloadAction`, `_csrf`, `deliveryType`
+- These fixed the HTTP 500 errors (was getting 500, now gets 200), but the response is still just a disclaimer PDF
+
+---
+
 ## Architecture: Data-Driven DocIds
-
-Previously: `config.py` had empty `search_url` per volume → scraper would discover docIds via HTML scraping.
-
-Now: `data/volumes.json` has all 52 docIds hardcoded → scraper reads them directly, skips discovery.
 
 ```
 data/volumes.json → src/config.py:load_volumes() → VOLUMES dict
@@ -33,17 +72,17 @@ data/volumes.json → src/config.py:load_volumes() → VOLUMES dict
 scripts/run.py → scrape_volume(doc_ids=vol["doc_ids"]) → download each
 ```
 
-To add more volumes: edit `data/volumes.json`, no code changes needed.
-
 ---
 
 ## Volume Summary
 
-| Volume | Docs | Ref |
-|--------|------|-----|
-| CO273_534 | 26 | CO 273/534/1 through /26 |
-| CO273_550 | 20 | CO 273/550/1 through /21 (no #9) |
-| CO273_579 | 6 | CO 273/579/1 through /6 |
+| Volume | Docs | Status |
+|--------|------|--------|
+| CO273_534 | 26 | Downloaded (disclaimers only — needs fix) |
+| CO273_550 | 20 | Not started |
+| CO273_579 | 6 | Not started |
+
+Existing downloads in `pdfs/CO273_534/` should be deleted before re-running with correct endpoint.
 
 ---
 
@@ -51,10 +90,14 @@ To add more volumes: edit `data/volumes.json`, no code changes needed.
 
 - Project: `aihistory-488807`
 - Bucket: `aihistory-co273` in `asia-southeast1`
-- Key: configured in `.env` as `GCS_KEY_PATH`
+- Key: configured in `.env`
 
 ---
 
-## Next Step
+## Environment Notes
 
-Run Task 10: `python -m scripts.run scrape --volume CO273_534` with real NUS auth.
+- Python: `/c/Users/yjkim/AppData/Local/Microsoft/WindowsApps/python3.exe` (3.14.3)
+- Venv: `source .venv/Scripts/activate`
+- Korean Windows (cp949) — avoid unicode em dashes in print statements
+- Git remote: https://github.com/kimyungju/aihistory.git
+- Auth captures only 3 cookies: `ezproxyn`, `ezproxyl`, `ezproxy` (EZProxy only)
