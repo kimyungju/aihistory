@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS -- Key Context
 
-**Last Updated: 2026-02-28 (session 5 -- dviViewer API breakthrough)**
+**Last Updated: 2026-02-28 (session 6 -- environment setup + scraper rewrite DONE)**
 
 ---
 
@@ -54,9 +54,9 @@ The dviViewer API works from both Selenium XHR and Python `requests` with sessio
 |------|---------|--------|
 | `data/volumes.json` | All 52 docIds by volume (data-driven) | Committed |
 | `src/config.py` | `load_volumes()` reads JSON, endpoints | Committed |
-| `src/scraper.py` | Old scraper (pdfGenerator -- dead end) | Needs rewrite |
+| `src/scraper.py` | dviViewer API scraper (rewritten session 6) | Committed |
 | `src/auth.py` | NUS SSO auth, polls for JSESSIONID11_omni | Committed |
-| `scripts/run.py` | CLI (has debug cmd_test from session 5) | Uncommitted changes |
+| `scripts/run.py` | CLI with scrape/build/upload/test commands | Committed |
 | `src/pdf_builder.py` | pypdf merge | Committed |
 | `src/gcs_upload.py` | GCS upload | Committed |
 | `pdfs/_test/documents/dvi_response_requests.json` | Sample 311KB API response | Local only |
@@ -106,19 +106,30 @@ NUS SSO (Selenium) -> extract cookies -> requests.Session
 
 ## Environment Notes
 
-- Python: `/c/Users/yjkim/AppData/Local/Microsoft/WindowsApps/python3.exe` (3.14.3)
-- Venv: `source .venv/Scripts/activate`
+- Python 3.14.3 installed from python.org (Microsoft Store version removed)
+- Python NOT on PATH in Git Bash by default; added to `~/.bashrc`
+- Cursor terminal (PowerShell): Python PATH injected via `terminal.integrated.env.windows` in Cursor settings
+- PowerShell profile at OneDrive Documents (Windows redirected): `C:\Users\yjkim\OneDrive - National University of Singapore\Documents\WindowsPowerShell\`
+- Venv: `.venv\Scripts\Activate.ps1` (PowerShell) or `source .venv/Scripts/activate` (Git Bash)
+- Venv created with Python 3.14.3, all deps installed via `pip install -e ".[dev]"`
 - Korean Windows (cp949) -- no em dashes in print, use `encoding='utf-8'` for file I/O
 - Git remote: https://github.com/kimyungju/aihistory.git
 - Test command: `python -m pytest tests/ --ignore=tests/test_gcs_upload.py -v`
 
 ---
 
+## Session 6 Changes (This Session)
+
+1. **Python environment fixed**: Installed Python 3.14.3 from python.org, removed broken Microsoft Store version
+2. **PATH issues resolved**: Added Python to Git Bash `~/.bashrc` and Cursor `settings.json` (`terminal.integrated.env.windows`)
+3. **Venv created**: `.venv` with all project dependencies installed
+4. **CLAUDE.md updated**: Added PowerShell activation command for Cursor terminal
+5. **Scraper rewrite already done** (prior sessions): `src/scraper.py` has `get_document_data()`, `download_document_pages()`, `save_ocr_text()`, `scrape_volume()`
+
 ## Next Steps
 
-1. Rewrite `src/scraper.py` to use dviViewer API (fetch JSON -> download page images -> extract OCR text)
-2. Update `src/config.py` with new endpoint constants
-3. Update `scripts/run.py` to use new scraper
-4. Update tests for new approach
-5. Delete old pdfs/CO273_534/ disclaimers, download all 3 volumes
-6. Build + upload to GCS
+1. **Test the scraper**: `python -m scripts.run test` (downloads 3 pages from one doc via NUS SSO)
+2. If test passes, run full scrape: `python -m scripts.run scrape --resume`
+3. Build PDFs: `python -m scripts.run build`
+4. Upload to GCS: `python -m scripts.run upload`
+5. Get Gemini API key for Phase 2 OCR

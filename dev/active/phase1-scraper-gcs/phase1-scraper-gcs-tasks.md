@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS -- Task Checklist
 
-**Last Updated: 2026-02-28 (session 5)**
+**Last Updated: 2026-02-28 (session 6)**
 
 ---
 
@@ -28,17 +28,23 @@ All code, tests, GCP setup, and docId config complete.
 - [x] Parsed JSON: 53 pages imageList, 106 pdfRecordIds, 51 pages OCR text
 - [x] Saved sample response: `pdfs/_test/documents/dvi_response_requests.json`
 
-### 10c: Rewrite scraper for dviViewer approach
-- [ ] Add `DVI_DOCUMENT_URL` constant to `src/config.py`
-- [ ] Add `get_document_data()` to `src/scraper.py` -- calls dviViewer API, returns parsed JSON
-- [ ] Add `download_page_images()` -- downloads all page images using recordId tokens
-- [ ] Add `extract_ocr_text()` -- extracts OCR text from JSON response
-- [ ] Update `scrape_volume()` to use new functions
-- [ ] Update `scripts/run.py` cmd_test to verify new approach
-- [ ] Update unit tests for new functions
-- [ ] Delete old download functions (or keep as legacy)
+### 10c: Rewrite scraper for dviViewer approach -- DONE (prior sessions)
+- [x] Add `DVI_DOCUMENT_URL` constant to `src/config.py`
+- [x] Add `get_document_data()` to `src/scraper.py` -- calls dviViewer API, returns parsed JSON
+- [x] Add `download_document_pages()` -- downloads all page images using recordId tokens
+- [x] Add `save_ocr_text()` -- extracts OCR text from JSON response
+- [x] Update `scrape_volume()` to use new functions
+- [x] Update `scripts/run.py` cmd_test to verify new approach
+- [x] Update unit tests for new functions
 
-### 10d: Download all volumes
+### 10c-env: Environment setup -- DONE (session 6)
+- [x] Install Python 3.14.3 from python.org (removed MS Store version)
+- [x] Fix PATH for Git Bash (~/.bashrc) and Cursor terminal (settings.json)
+- [x] Create .venv and install all dependencies
+- [x] Update CLAUDE.md with PowerShell activation command
+
+### 10d: Test and download all volumes -- NEXT
+- [ ] Run `python -m scripts.run test` to verify scraper works with NUS SSO
 - [ ] Delete old pdfs/CO273_534/ disclaimer files
 - [ ] Download CO273_534 (26 docs)
 - [ ] Download CO273_550 (20 docs)
@@ -71,6 +77,8 @@ All code, tests, GCP setup, and docId config complete.
 | GCP Setup | Done |
 | DocId Config (52 docs) | Done |
 | dviViewer API Discovery | Done (session 5) |
-| Scraper Rewrite | TODO (use dviViewer API) |
-| Download All Volumes | Blocked by scraper rewrite |
+| Scraper Rewrite | Done |
+| Environment Setup | Done (session 6) |
+| Test Scraper | **NEXT**: `python -m scripts.run test` |
+| Download All Volumes | Blocked by test |
 | Build + Upload | Blocked by download |
