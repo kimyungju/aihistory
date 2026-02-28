@@ -17,9 +17,10 @@ Target data: CO273/534 (1,436 pages), CO273/550 (460 pages), CO273/579 (842 page
 ## Commands
 
 ```bash
-# Setup
+# Setup (Python 3.14 on Windows)
 python -m venv .venv
-source .venv/Scripts/activate   # Windows (Git Bash)
+.venv\Scripts\Activate.ps1      # PowerShell (Cursor terminal)
+source .venv/Scripts/activate   # Git Bash
 pip install -e ".[dev]"
 
 # Tests
