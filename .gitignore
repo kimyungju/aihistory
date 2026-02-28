@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+env/
+
+# Environment
+.env
+
+# Downloads
+pdfs/
+
+# GCS credentials
+*.json
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# Claude
+.claude/
