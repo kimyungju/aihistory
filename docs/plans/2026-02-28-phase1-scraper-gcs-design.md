@@ -36,17 +36,26 @@ Extract cookies                   Phase 2: OCR Pipeline
     ↓                                  ↓
 requests + cookies                Phase 3: Index Generation
     ↓                                  ↓
-Download page images              Phase 4: RAG Chatbot
+Download PDF parts per volume     Phase 4: RAG Chatbot
+    ↓
+Extract pages as images
+    ↓
+Renumber continuously
     ↓
 Upload to GCS
 ```
+
+## Source Choice
+
+Gale (high-res) over microfilm (grainy) — image quality directly impacts OCR accuracy (25% of competition score). Gale splits each volume into multiple PDF parts/chunks; our pipeline reassembles them into a unified per-volume page sequence.
 
 ## Approach
 
 **Hybrid Selenium + Requests**:
 - Selenium handles NUS SSO login (visible browser for 2FA/SAML)
 - Session cookies transferred to `requests.Session`
-- `requests` downloads page images from Gale's internal API endpoints
+- `requests` downloads PDF parts from Gale's internal API endpoints
+- Each volume may consist of multiple Gale PDF parts — download all parts, extract pages as images, and renumber into a single continuous sequence per volume
 - Faster and lighter than full browser automation for ~2,738 pages
 
 ## Project Structure
@@ -64,6 +73,10 @@ aihistory/
 │   ├── gcs_upload.py       # Upload to Google Cloud Storage
 │   └── config.py           # Volume definitions, paths, settings
 ├── pdfs/                   # Local download dir (gitignored)
+│   └── {volume_id}/
+│       ├── parts/          # Raw Gale PDF parts
+│       ├── images/         # Extracted page images (renumbered)
+│       └── manifest.json   # Download/extraction progress
 └── scripts/
     └── run.py              # CLI: scrape | upload | all
 ```
@@ -85,18 +98,22 @@ aihistory/
 - Page image/PDF API endpoint pattern
 - Required headers and parameters (document ID, page number)
 - Any anti-scraping tokens
+- How volumes are split into parts (e.g., CO273_534_part1.pdf, CO273_534_part2.pdf)
 
 **Download logic**:
-- Build URLs for each page of target volumes
-- Download pages with 1-2 sec delay between requests
-- Save as `pdfs/{volume_id}/page_{NNNN}.{ext}`
+- Discover all PDF parts for each volume
+- Download each part with 1-2 sec delay between requests
+- Save raw parts as `pdfs/{volume_id}/parts/part_{NN}.pdf`
+- Extract pages from each part as images using `pypdf` + `Pillow`
+- Renumber pages continuously across parts → `pdfs/{volume_id}/pages/page_{NNNN}.jpg`
 - Track progress in `pdfs/{volume_id}/manifest.json` (supports resume)
-- Retry failed pages (max 3 attempts)
+- Manifest records: parts downloaded, pages extracted, part-to-page mapping
+- Retry failed downloads (max 3 attempts)
 
 ### 3. pdf_builder.py — Page Assembly
 
-- Combine page images into single per-volume PDF
-- Preserve page order
+- Combine extracted page images into single per-volume PDF
+- Preserve page order (already renumbered across parts)
 - Use `pypdf` for PDF pages, `Pillow` for images → PDF
 
 ### 4. gcs_upload.py — Cloud Storage Upload
@@ -106,13 +123,20 @@ aihistory/
   ```
   gs://aihistory-co273/
   ├── CO273_534/
-  │   ├── pages/page_0001.jpg ...
+  │   ├── images/page_0001.jpg ...
+  │   ├── ocr/                        ← populated by Phase 2
   │   ├── CO273_534_full.pdf
-  │   └── manifest.json
+  │   └── metadata.json               ← volume, parts count, total pages, part-to-page mapping
   ├── CO273_550/
-  │   ├── pages/page_0001.jpg ...
+  │   ├── images/page_0001.jpg ...
+  │   ├── ocr/
   │   ├── CO273_550_full.pdf
-  │   └── manifest.json
+  │   └── metadata.json
+  ├── CO273_579/
+  │   ├── images/page_0001.jpg ...
+  │   ├── ocr/
+  │   ├── CO273_579_full.pdf
+  │   └── metadata.json
   └── metadata/volumes.json
   ```
 - Verify uploads by listing and comparing counts
