@@ -376,6 +376,7 @@ def test_get_document_data():
     session = MagicMock()
     response = MagicMock()
     response.status_code = 200
+    response.content = b'{"imageList": []}' # non-empty content
     response.json.return_value = SAMPLE_DVI_RESPONSE
     session.get.return_value = response
 
@@ -561,3 +562,62 @@ def test_download_document_pages_concurrent(tmp_path):
     assert result == 10
     for i in range(1, 11):
         assert (tmp_path / f"page_{i:04d}.jpg").exists()
+
+
+# ---------------------------------------------------------------------------
+# 17. Retry and session expiry tests
+# ---------------------------------------------------------------------------
+
+def test_get_document_data_retries_on_empty():
+    """Retries when API returns empty response, succeeds on retry."""
+    session = MagicMock()
+
+    empty_response = MagicMock()
+    empty_response.status_code = 200
+    empty_response.content = b""
+
+    good_response = MagicMock()
+    good_response.status_code = 200
+    good_response.content = b'{"imageList": []}'
+    good_response.json.return_value = SAMPLE_DVI_RESPONSE
+
+    session.get.side_effect = [empty_response, good_response]
+
+    result = get_document_data(session, "GALE|TEST123")
+    assert "imageList" in result
+    assert session.get.call_count == 2
+
+
+def test_get_document_data_retries_exhausted():
+    """Raises ValueError after all retries fail with empty response."""
+    session = MagicMock()
+    empty_response = MagicMock()
+    empty_response.status_code = 200
+    empty_response.content = b""
+    session.get.return_value = empty_response
+
+    with pytest.raises(ValueError, match="Empty API response.*session may have expired"):
+        get_document_data(session, "GALE|TEST123")
+
+    assert session.get.call_count == 3  # MAX_RETRIES = 3
+
+
+def test_get_document_data_retries_on_non_json():
+    """Retries when API returns HTML instead of JSON."""
+    session = MagicMock()
+
+    html_response = MagicMock()
+    html_response.status_code = 200
+    html_response.content = b"<html>Session expired</html>"
+    html_response.text = "<html>Session expired</html>"
+    html_response.json.side_effect = json.JSONDecodeError("", "", 0)
+
+    good_response = MagicMock()
+    good_response.status_code = 200
+    good_response.content = b'{"imageList": []}'
+    good_response.json.return_value = {"imageList": []}
+
+    session.get.side_effect = [html_response, good_response]
+
+    result = get_document_data(session, "GALE|TEST123")
+    assert "imageList" in result

@@ -132,6 +132,8 @@ def get_document_data(session: requests.Session, doc_id: str) -> dict:
     - imageList: list of pages with recordId tokens for image download
     - originalDocument.pageOcrTextMap: OCR text per page
     - originalDocument.formatPdfRecordIdsForDviDownload: for BulkPDF
+
+    Retries up to MAX_RETRIES on empty/non-JSON responses (session expiry).
     """
     params = {
         "docId": doc_id,
@@ -145,12 +147,35 @@ def get_document_data(session: requests.Session, doc_id: str) -> dict:
         "Accept": "application/json, text/javascript, */*; q=0.01",
     }
 
-    response = session.get(
-        DVI_DOCUMENT_URL, params=params, headers=headers,
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.json()
+    for attempt in range(1, MAX_RETRIES + 1):
+        response = session.get(
+            DVI_DOCUMENT_URL, params=params, headers=headers,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+
+        if not response.content or not response.content.strip():
+            preview = "(empty)"
+            print(f"    Retry {attempt}/{MAX_RETRIES}: empty response for {doc_id}")
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+                continue
+            raise ValueError(
+                f"Empty API response for {doc_id} after {MAX_RETRIES} retries "
+                f"(session may have expired)"
+            )
+
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            preview = response.text[:200]
+            print(f"    Retry {attempt}/{MAX_RETRIES}: non-JSON response: {preview}")
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+                continue
+            raise ValueError(
+                f"Non-JSON API response for {doc_id} after {MAX_RETRIES} retries: {preview}"
+            )
 
 
 def _download_single_page(
@@ -159,32 +184,42 @@ def _download_single_page(
     output_dir: Path,
 ) -> bool:
     """Download a single page image. Returns True on success or skip."""
-    try:
-        page_num = int(page_info["pageNumber"])
-        record_id = page_info["recordId"]
-        filename = f"page_{page_num:04d}.jpg"
-        filepath = output_dir / filename
+    page_num = int(page_info["pageNumber"])
+    record_id = page_info["recordId"]
+    filename = f"page_{page_num:04d}.jpg"
+    filepath = output_dir / filename
 
-        # Skip if already downloaded
-        if filepath.exists() and filepath.stat().st_size > 1000:
-            return True
-
-        url = f"{IMAGE_DOWNLOAD_URL}/{record_id}"
-        params = {"legacy": "no", "scale": "1.0", "format": "jpeg"}
-        response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-
-        if len(response.content) < 1000:
-            print(f"    Warning: page {page_num} too small ({len(response.content)} bytes)")
-            return False
-
-        with open(filepath, "wb") as f:
-            f.write(response.content)
+    # Skip if already downloaded
+    if filepath.exists() and filepath.stat().st_size > 1000:
         return True
 
-    except Exception as e:
-        print(f"    Failed page download: {e}")
-        return False
+    url = f"{IMAGE_DOWNLOAD_URL}/{record_id}"
+    params = {"legacy": "no", "scale": "1.0", "format": "jpeg"}
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+
+            if len(response.content) < 1000:
+                if attempt < MAX_RETRIES:
+                    time.sleep(2 ** attempt)
+                    continue
+                print(f"    Warning: page {page_num} too small ({len(response.content)} bytes)")
+                return False
+
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            return True
+
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                time.sleep(2 ** attempt)
+                continue
+            print(f"    Failed page {page_num}: {e}")
+            return False
+
+    return False
 
 
 def download_document_pages(
@@ -319,7 +354,11 @@ def scrape_volume(
 
     if resume and manifest["doc_ids"]:
         doc_ids = manifest["doc_ids"]
+        failed = len(manifest.get("failed_docs", []))
         print(f"[{volume_id}] Resuming with {len(doc_ids)} known documents")
+        if failed:
+            print(f"[{volume_id}] Clearing {failed} previously failed docs for retry")
+            manifest["failed_docs"] = []
     else:
         manifest["doc_ids"] = doc_ids
 
@@ -328,6 +367,7 @@ def scrape_volume(
     print(f"[{volume_id}] {len(doc_ids)} documents to process")
 
     downloaded_docs = set(manifest.get("downloaded_docs", []))
+    consecutive_failures = 0
 
     for i, doc_id in enumerate(doc_ids, 1):
         if doc_id in downloaded_docs:
@@ -355,12 +395,20 @@ def scrape_volume(
             # Mark as complete
             manifest.setdefault("downloaded_docs", []).append(doc_id)
             downloaded_docs.add(doc_id)
+            consecutive_failures = 0
 
         except Exception as e:
             print(f"    FAILED: {e}")
             manifest.setdefault("failed_docs", [])
             if doc_id not in manifest["failed_docs"]:
                 manifest["failed_docs"].append(doc_id)
+            consecutive_failures += 1
+
+            if consecutive_failures >= 3:
+                print(f"\n  [{volume_id}] 3 consecutive failures - session may have expired.")
+                print(f"  [{volume_id}] Re-run with --resume to retry failed documents.")
+                save_manifest(manifest_path, manifest)
+                break
 
         save_manifest(manifest_path, manifest)
         time.sleep(DOWNLOAD_DELAY)
