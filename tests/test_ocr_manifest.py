@@ -32,12 +32,23 @@ def test_save_and_load_manifest(tmp_path):
 def test_update_manifest_page_success():
     """Successful page is added to completed list."""
     manifest = {
-        "completed_pages": [1, 2],
+        "completed_pages": ["1", "2"],
         "failed_pages": [],
         "total_pages": 10,
     }
-    update_manifest_page(manifest, page_num=3, success=True)
-    assert 3 in manifest["completed_pages"]
+    update_manifest_page(manifest, page_key="3", success=True)
+    assert "3" in manifest["completed_pages"]
+
+
+def test_update_manifest_page_per_doc_key():
+    """Per-document page key format works."""
+    manifest = {
+        "completed_pages": [],
+        "failed_pages": [],
+        "total_pages": 10,
+    }
+    update_manifest_page(manifest, page_key="GALE_AAA111/1", success=True)
+    assert "GALE_AAA111/1" in manifest["completed_pages"]
 
 
 def test_update_manifest_page_failure():
@@ -47,7 +58,7 @@ def test_update_manifest_page_failure():
         "failed_pages": [],
         "total_pages": 10,
     }
-    update_manifest_page(manifest, page_num=5, success=False, error="timeout")
+    update_manifest_page(manifest, page_key="5", success=False, error="timeout")
     assert len(manifest["failed_pages"]) == 1
-    assert manifest["failed_pages"][0]["page"] == 5
+    assert manifest["failed_pages"][0]["page"] == "5"
     assert manifest["failed_pages"][0]["error"] == "timeout"
