@@ -12,6 +12,7 @@ This replaces the old pdfGenerator/html approach which always returned disclaime
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -29,6 +30,7 @@ from src.config import (
     GALE_USER_GROUP,
     DOWNLOAD_DELAY,
     MAX_RETRIES,
+    MAX_WORKERS,
     PDF_DOWNLOAD_TIMEOUT,
     REQUEST_TIMEOUT,
     SEARCH_RESULTS_PER_PAGE,
@@ -189,51 +191,32 @@ def download_document_pages(
     session: requests.Session,
     doc_data: dict,
     output_dir: Path,
+    max_workers: int | None = None,
 ) -> int:
-    """Download all page images for a document using recordId tokens.
+    """Download all page images concurrently using recordId tokens.
 
-    Uses encrypted recordId tokens from imageList to fetch JPEG images
-    from Gale's image server. Skips pages that already exist on disk.
+    Uses ThreadPoolExecutor for parallel downloads. requests.Session is
+    thread-safe so the same session is shared across workers.
 
-    Returns the number of pages successfully downloaded.
+    Returns the number of pages successfully downloaded or skipped.
     """
+    if max_workers is None:
+        max_workers = MAX_WORKERS
+
     image_list = doc_data.get("imageList", [])
     if not image_list:
         return 0
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    downloaded = 0
 
-    for page_info in image_list:
-        page_num = int(page_info["pageNumber"])
-        record_id = page_info["recordId"]
-        filename = f"page_{page_num:04d}.jpg"
-        filepath = output_dir / filename
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_download_single_page, session, page_info, output_dir)
+            for page_info in image_list
+        ]
+        results = [f.result() for f in futures]
 
-        # Skip if already downloaded
-        if filepath.exists() and filepath.stat().st_size > 1000:
-            downloaded += 1
-            continue
-
-        try:
-            url = f"{IMAGE_DOWNLOAD_URL}/{record_id}"
-            params = {"legacy": "no", "scale": "1.0", "format": "jpeg"}
-            response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-
-            if len(response.content) < 1000:
-                print(f"    Warning: page {page_num} too small ({len(response.content)} bytes)")
-                continue
-
-            with open(filepath, "wb") as f:
-                f.write(response.content)
-            downloaded += 1
-            time.sleep(0.3)
-
-        except Exception as e:
-            print(f"    Failed page {page_num}: {e}")
-
-    return downloaded
+    return sum(1 for r in results if r)
 
 
 def save_ocr_text(doc_data: dict, output_dir: Path, doc_id: str) -> int:

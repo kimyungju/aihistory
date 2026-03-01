@@ -535,3 +535,29 @@ def test_download_single_page_handles_error(tmp_path):
     page_info = {"pageNumber": "1", "recordId": "ENCODED_TOKEN_PAGE1"}
     result = _download_single_page(session, page_info, tmp_path)
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# 16. test_download_document_pages_concurrent
+# ---------------------------------------------------------------------------
+
+def test_download_document_pages_concurrent(tmp_path):
+    """Downloads pages concurrently using multiple workers."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"\xff\xd8\xff" + b"x" * 5000
+    response.ok = True
+    session.get.return_value = response
+
+    doc_data = {
+        "imageList": [
+            {"pageNumber": str(i), "recordId": f"TOKEN_{i}"}
+            for i in range(1, 11)  # 10 pages
+        ]
+    }
+
+    result = download_document_pages(session, doc_data, tmp_path, max_workers=3)
+    assert result == 10
+    for i in range(1, 11):
+        assert (tmp_path / f"page_{i:04d}.jpg").exists()
