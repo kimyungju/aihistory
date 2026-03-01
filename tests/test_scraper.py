@@ -15,6 +15,7 @@ from src.scraper import (
     save_ocr_text,
     load_manifest,
     save_manifest,
+    _download_single_page,
 )
 
 
@@ -480,3 +481,57 @@ def test_save_ocr_text_no_original_doc():
     """Returns 0 when originalDocument is missing."""
     result = save_ocr_text({}, Path("/tmp"), "GALE|TEST")
     assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# 15. test_download_single_page
+# ---------------------------------------------------------------------------
+
+def test_download_single_page_success(tmp_path):
+    """Downloads one page image and returns True."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"\xff\xd8\xff" + b"x" * 5000
+    response.ok = True
+    session.get.return_value = response
+
+    page_info = {"pageNumber": "1", "recordId": "ENCODED_TOKEN_PAGE1"}
+    result = _download_single_page(session, page_info, tmp_path)
+    assert result is True
+    assert (tmp_path / "page_0001.jpg").exists()
+
+
+def test_download_single_page_skips_existing(tmp_path):
+    """Returns True without network call when file exists."""
+    (tmp_path / "page_0001.jpg").write_bytes(b"\xff\xd8\xff" + b"x" * 5000)
+
+    session = MagicMock()
+    page_info = {"pageNumber": "1", "recordId": "ENCODED_TOKEN_PAGE1"}
+    result = _download_single_page(session, page_info, tmp_path)
+    assert result is True
+    assert session.get.call_count == 0
+
+
+def test_download_single_page_rejects_small(tmp_path):
+    """Returns False for images under 1000 bytes."""
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"tiny"
+    response.ok = True
+    session.get.return_value = response
+
+    page_info = {"pageNumber": "1", "recordId": "ENCODED_TOKEN_PAGE1"}
+    result = _download_single_page(session, page_info, tmp_path)
+    assert result is False
+
+
+def test_download_single_page_handles_error(tmp_path):
+    """Returns False on network error."""
+    session = MagicMock()
+    session.get.side_effect = Exception("timeout")
+
+    page_info = {"pageNumber": "1", "recordId": "ENCODED_TOKEN_PAGE1"}
+    result = _download_single_page(session, page_info, tmp_path)
+    assert result is False

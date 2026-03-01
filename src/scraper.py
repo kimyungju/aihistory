@@ -151,6 +151,40 @@ def get_document_data(session: requests.Session, doc_id: str) -> dict:
     return response.json()
 
 
+def _download_single_page(
+    session: requests.Session,
+    page_info: dict,
+    output_dir: Path,
+) -> bool:
+    """Download a single page image. Returns True on success or skip."""
+    page_num = int(page_info["pageNumber"])
+    record_id = page_info["recordId"]
+    filename = f"page_{page_num:04d}.jpg"
+    filepath = output_dir / filename
+
+    # Skip if already downloaded
+    if filepath.exists() and filepath.stat().st_size > 1000:
+        return True
+
+    try:
+        url = f"{IMAGE_DOWNLOAD_URL}/{record_id}"
+        params = {"legacy": "no", "scale": "1.0", "format": "jpeg"}
+        response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+
+        if len(response.content) < 1000:
+            print(f"    Warning: page {page_num} too small ({len(response.content)} bytes)")
+            return False
+
+        with open(filepath, "wb") as f:
+            f.write(response.content)
+        return True
+
+    except Exception as e:
+        print(f"    Failed page {page_num}: {e}")
+        return False
+
+
 def download_document_pages(
     session: requests.Session,
     doc_data: dict,

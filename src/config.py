@@ -52,7 +52,8 @@ def load_volumes() -> dict:
 VOLUMES = load_volumes()
 
 # Scraper settings
-DOWNLOAD_DELAY = 1.5  # seconds between requests
+DOWNLOAD_DELAY = 0.5   # seconds between documents (was 1.5)
+MAX_WORKERS = 5         # concurrent page image downloads per document
 MAX_RETRIES = 3
 REQUEST_TIMEOUT = 30  # seconds
 PDF_DOWNLOAD_TIMEOUT = 120  # seconds; multi-page PDFs take longer
