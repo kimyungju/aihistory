@@ -12,7 +12,7 @@ import argparse
 from src.config import VOLUMES, DOWNLOAD_DIR
 from src.auth import authenticate_gale
 from src.scraper import scrape_volume, get_document_data, download_document_pages, save_ocr_text, sanitize_doc_id
-from src.pdf_builder import merge_pdfs
+from src.pdf_builder import build_volume_pdf
 from src.gcs_upload import upload_all_volumes, list_bucket_contents
 
 
@@ -50,22 +50,22 @@ def cmd_scrape(args):
 
 
 def cmd_build(args):
-    """Merge downloaded document PDFs into per-volume PDFs."""
-    print("=== Merging PDFs ===")
+    """Build per-volume PDFs from downloaded page images."""
+    print("=== Building PDFs ===")
     volumes = _get_volumes(args)
 
     for volume_id in volumes:
-        docs_dir = DOWNLOAD_DIR / volume_id / "documents"
+        images_dir = DOWNLOAD_DIR / volume_id / "images"
         output_pdf = DOWNLOAD_DIR / volume_id / f"{volume_id}_full.pdf"
 
-        if not docs_dir.exists():
-            print(f"Skipping {volume_id}: no documents directory found")
+        if not images_dir.exists():
+            print(f"Skipping {volume_id}: no images directory found")
             continue
 
-        print(f"\nMerging {volume_id}...")
-        merge_pdfs(docs_dir, output_pdf)
+        print(f"\nBuilding {volume_id}...")
+        build_volume_pdf(images_dir, output_pdf)
 
-    print("\n=== PDF merge complete ===")
+    print("\n=== PDF build complete ===")
 
 
 def cmd_upload(args):
