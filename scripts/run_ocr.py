@@ -5,6 +5,7 @@ Usage:
     python -m scripts.run_ocr extract [--volume CO273_534]
     python -m scripts.run_ocr ocr [--volume CO273_534] [--concurrency 20]
     python -m scripts.run_ocr all [--volume CO273_534] [--concurrency 20]
+    python -m scripts.run_ocr evaluate [--volume CO273_534] [--sample 10]
 """
 import argparse
 import asyncio
@@ -88,6 +89,41 @@ def cmd_ocr(args):
     print("\n=== OCR complete ===")
 
 
+def cmd_evaluate(args):
+    """Evaluate Gemini OCR quality against Gale baseline."""
+    import json as json_mod
+    from src.ocr.evaluate import evaluate_volume
+
+    print("=== Evaluating OCR Quality (Gemini vs Gale) ===")
+
+    for volume_id in get_volume_ids(args):
+        volume_dir = DOWNLOAD_DIR / volume_id
+        print(f"\n[{volume_id}] Evaluating...")
+
+        result = evaluate_volume(
+            volume_id=volume_id,
+            volume_dir=volume_dir,
+            sample=args.sample,
+        )
+
+        if "error" in result:
+            print(f"[{volume_id}] Error: {result['error']}")
+            continue
+
+        print(f"\n[{volume_id}] Overall: WER={result['overall_wer']}, "
+              f"CER={result['overall_cer']} "
+              f"({result['total_documents']} documents)")
+
+        # Save report
+        report_path = volume_dir / "eval_report.json"
+        report_path.write_text(
+            json_mod.dumps(result, indent=2), encoding="utf-8"
+        )
+        print(f"[{volume_id}] Report saved to {report_path}")
+
+    print("\n=== Evaluation complete ===")
+
+
 def cmd_all(args):
     """Extract pages then run OCR."""
     cmd_extract(args)
@@ -116,6 +152,12 @@ def main():
     sp_all.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
     sp_all.add_argument("--local", action="store_true", help="Use local files instead of GCS")
     sp_all.set_defaults(func=cmd_all)
+
+    # evaluate
+    sp_eval = subparsers.add_parser("evaluate", help="Compare Gemini vs Gale OCR quality")
+    sp_eval.add_argument("--volume", type=str, help="Process only this volume")
+    sp_eval.add_argument("--sample", type=int, default=None, help="Evaluate only N documents")
+    sp_eval.set_defaults(func=cmd_evaluate)
 
     args = parser.parse_args()
     args.func(args)
