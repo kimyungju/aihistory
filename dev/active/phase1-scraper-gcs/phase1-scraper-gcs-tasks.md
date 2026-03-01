@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS -- Task Checklist
 
-**Last Updated: 2026-03-01 (session 7)**
+**Last Updated: 2026-03-01 (session 9)**
 
 ---
 
@@ -43,26 +43,32 @@ All code, tests, GCP setup, and docId config complete.
 - [x] Create .venv and install all dependencies
 - [x] Update CLAUDE.md with PowerShell activation command
 
-### 10c-perf: Concurrent downloads -- PLAN WRITTEN, NOT IMPLEMENTED
-Plan: `docs/plans/2026-03-01-concurrent-downloads.md`
-User chose: multi-agent team execution (subagent-driven)
+### 10c-perf: Concurrent downloads -- DONE (session 7-8)
+- [x] Task 1: `MAX_WORKERS=5` in config, `DOWNLOAD_DELAY` reduced to 0.5s
+- [x] Task 2: `_download_single_page()` helper extracted + tests
+- [x] Task 3: `download_document_pages()` rewritten with `ThreadPoolExecutor`
+- [x] Task 4: Per-page `time.sleep(0.3)` removed
+- [x] Task 5: `--workers` CLI flag added to `scripts/run.py`
 
-- [ ] Task 1: Add `MAX_WORKERS=5` to config, reduce `DOWNLOAD_DELAY` to 0.5s
-- [ ] Task 2: Extract `_download_single_page()` helper + tests
-- [ ] Task 3: Rewrite `download_document_pages()` with `ThreadPoolExecutor`
-- [ ] Task 4: Remove per-page `time.sleep(0.3)`, verify no stale sleeps
-- [ ] Task 5: Add `--workers` CLI flag to `scripts/run.py`
+### 10c-retry: Session expiry retry logic -- DONE (session 8-9, commit 4eb3bdc)
+- [x] Retry + empty response detection in `get_document_data()` (exponential backoff)
+- [x] Retry in `_download_single_page()` (connection errors + empty responses)
+- [x] Clear `failed_docs` on `--resume` in `scrape_volume()`
+- [x] Consecutive failure abort (3 in a row -> stop + suggest `--resume`)
+- [x] 3 new tests added (28/28 total)
 
-### 10d: Test and download all volumes -- NEXT (after concurrent downloads)
-- [ ] Run `python -m scripts.run test` to verify scraper works with NUS SSO
-- [ ] Delete old pdfs/CO273_534/ disclaimer files
-- [ ] Download CO273_534 (26 docs)
-- [ ] Download CO273_550 (20 docs)
-- [ ] Download CO273_579 (6 docs)
+### 10d: Download all volumes -- IN PROGRESS
+- [x] Scraper test passed with NUS SSO
+- [x] Deleted old CO273_534 disclaimer files
+- [x] Download CO273_534 (26/26 docs) ✅
+- [ ] Download CO273_550 (20 docs) -- needs NUS SSO session
+- [ ] Download CO273_579 (6 docs) -- needs NUS SSO session
 
-### 10e: Build + Upload
-- [ ] Update `pdf_builder.py` if needed (now merging page images, not doc PDFs)
+### 10e: Build + Upload -- BLOCKED on GCS permissions
 - [ ] `python -m scripts.run build` -- create per-volume PDFs from page images
+- [ ] Fix GCS bucket permissions (service account needs Storage Admin role)
+- [ ] Confirm bucket name (user may have created different name than `aihistory-co273`)
+- [ ] Update `.env` GCS_BUCKET if needed
 - [ ] `python -m scripts.run upload` -- upload to GCS
 - [ ] Verify in Cloud Console
 
@@ -89,7 +95,8 @@ User chose: multi-agent team execution (subagent-driven)
 | dviViewer API Discovery | Done (session 5) |
 | Scraper Rewrite | Done |
 | Environment Setup | Done (session 6) |
-| Concurrent Downloads | **Plan written** (session 7), not implemented |
-| Test Scraper | Blocked by concurrent downloads impl |
-| Download All Volumes | Blocked by test |
-| Build + Upload | Blocked by download |
+| Concurrent Downloads | Done (session 7-8) |
+| Retry Logic | Done (session 8-9, commit 4eb3bdc) |
+| CO273_534 Download | **Done** (26/26 docs, ~1.2GB) |
+| CO273_550 + CO273_579 | Not started (need NUS SSO) |
+| GCS Upload | **Blocked** (bucket permissions + name) |

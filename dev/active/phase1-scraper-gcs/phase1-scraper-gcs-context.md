@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS -- Key Context
 
-**Last Updated: 2026-03-01 (session 7 -- concurrent downloads plan written)**
+**Last Updated: 2026-03-01 (session 9 -- CO273_534 scraped, GCS upload blocked on permissions)**
 
 ---
 
@@ -63,34 +63,43 @@ The dviViewer API works from both Selenium XHR and Python `requests` with sessio
 
 ---
 
-## Session 7: Concurrent Downloads Plan (2026-03-01)
+## Session 9: CO273_534 Scraped + GCS Upload Blocked (2026-03-01)
 
-### Problem
-Sequential page downloads take ~60 minutes for 2,738 pages:
-- 0.3s sleep per page = 14 min of sleeping
-- ~1s network per page = 46 min of I/O
-- 1.5s between 52 documents = 78s
+### Scraper fixes (session 8-9)
+- Added retry logic to `get_document_data()`: checks empty `response.content` before `.json()`, retries MAX_RETRIES times with exponential backoff (2^attempt seconds)
+- Added retry to `_download_single_page()`: retry loop around HTTP GET with backoff
+- Updated `scrape_volume()`: clears `failed_docs` on resume, tracks `consecutive_failures`, aborts after 3 consecutive failures
+- Commit: `4eb3bdc`
 
-### Solution: Plan Written
-**Plan file: `docs/plans/2026-03-01-concurrent-downloads.md`**
+### CO273_534: COMPLETE (26/26 docs)
+- First run: 15/26 succeeded, 11 failed (session expiry -- empty HTTP 200 from Gale API)
+- After retry fix + `--resume`: all 26/26 downloaded successfully
+- Data at: `pdfs/CO273_534/images/` (26 per-doc subdirectories), `pdfs/CO273_534/text/`
+- 28/28 scraper tests passing
 
-5 tasks:
-1. Add `MAX_WORKERS=5` to config, reduce `DOWNLOAD_DELAY` from 1.5s to 0.5s
-2. Extract `_download_single_page()` helper from `download_document_pages()`
-3. Rewrite `download_document_pages()` with `ThreadPoolExecutor(max_workers=5)`
-4. Remove per-page `time.sleep(0.3)` (concurrency provides natural throttling)
-5. Add `--workers` CLI flag to `scripts/run.py`
+### GCS Upload: BLOCKED on permissions
+- `.env` file created with `GCS_KEY_PATH=C:\NUS\Projects\aihistory-488807-34cea8f4bde7.json`
+- Client authenticates OK (service account: `aihistory-uploader@aihistory-488807.iam.gserviceaccount.com`)
+- **403 error**: service account has Storage Object Creator + Viewer roles only
+- Needs **Storage Admin** or **Storage Legacy Bucket Reader** on the bucket
+- **Bucket name might be wrong**: user said "I created the separate bucket" -- may not be `aihistory-co273`
+- User must fix in GCP Console: Cloud Storage > Buckets > [bucket] > Permissions > Grant Access
 
-Expected speedup: ~60 min -> ~10 min (6x faster)
+### To unblock GCS upload:
+1. User confirms bucket name (might not be `aihistory-co273`)
+2. User adds Storage Admin role to service account on that bucket
+3. Update `.env` `GCS_BUCKET=` if bucket name differs
+4. Run: `python -m scripts.run upload`
 
-### User chose: Subagent-driven execution (multi-agent team)
-The plan has NOT been implemented yet. User requested multi-agent team execution.
+---
 
-### Key design decisions
-- `requests.Session` is thread-safe -- safe to share across ThreadPoolExecutor workers
-- `_download_single_page()` returns bool (True=success/skip, False=fail) -- composable with futures
-- `max_workers` parameter defaults to `MAX_WORKERS` from config but can be overridden via CLI `--workers`
-- No async rewrite needed -- ThreadPoolExecutor is sufficient for I/O-bound downloads
+## Session 7: Concurrent Downloads (2026-03-01)
+
+Concurrent downloads were implemented in session 7-8:
+- `MAX_WORKERS=5` in config, `DOWNLOAD_DELAY` reduced to 0.5s
+- `_download_single_page()` helper extracted
+- `ThreadPoolExecutor(max_workers=5)` in `download_document_pages()`
+- `--workers` CLI flag in `scripts/run.py`
 
 ---
 
@@ -122,7 +131,7 @@ NUS SSO (Selenium) -> extract cookies -> requests.Session
 
 | Volume | Docs | Status |
 |--------|------|--------|
-| CO273_534 | 26 | Downloaded disclaimers only (delete and retry) |
+| CO273_534 | 26 | COMPLETE (26/26, ~1.2GB locally) |
 | CO273_550 | 20 | Not started |
 | CO273_579 | 6 | Not started |
 
@@ -152,9 +161,8 @@ NUS SSO (Selenium) -> extract cookies -> requests.Session
 
 ## Next Steps
 
-1. **Implement concurrent downloads**: Execute `docs/plans/2026-03-01-concurrent-downloads.md` (5 tasks, multi-agent team)
-2. **Test the scraper**: `python -m scripts.run test` (downloads 3 pages from one doc via NUS SSO)
-3. If test passes, run full scrape: `python -m scripts.run scrape --resume --workers 5`
-4. Build PDFs: `python -m scripts.run build`
-5. Upload to GCS: `python -m scripts.run upload`
-6. Get Gemini API key for Phase 2 OCR
+1. **Unblock GCS upload**: User fixes bucket permissions + confirms bucket name
+2. **Upload CO273_534**: `python -m scripts.run upload`
+3. **Scrape remaining volumes**: `python -m scripts.run scrape --volume CO273_550` and CO273_579 (need NUS SSO)
+4. **Build PDFs**: `python -m scripts.run build`
+5. **Get Gemini API key** for Phase 2 OCR

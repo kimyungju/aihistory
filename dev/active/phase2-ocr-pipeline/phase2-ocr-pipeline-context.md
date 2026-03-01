@@ -1,6 +1,6 @@
 # Phase 2: Enhanced OCR Pipeline — Key Context
 
-**Last Updated: 2026-03-01 (session 8 — OCR enhancements complete)**
+**Last Updated: 2026-03-01 (session 9 — CO273_534 scraped, GCS blocked on perms)**
 
 ---
 
@@ -135,8 +135,10 @@ gs://aihistory-co273/{vol}/images/ → download → OCR → upload → gs://aihi
 
 | Blocker | Status | Impact |
 |---------|--------|--------|
-| Phase 1 real data not downloaded | Fixes applied, needs SSO test | Can't run OCR on real data |
+| Phase 1 CO273_534 data | DONE (26/26 docs scraped) | OCR can run on local data |
+| CO273_550 + CO273_579 | Not started (need NUS SSO) | Partial data only |
 | Gemini API key needed | User creates at aistudio.google.com | Blocks real OCR runs |
+| GCS upload blocked | Service account permissions | Can't use GCS mode for OCR |
 
 ---
 
