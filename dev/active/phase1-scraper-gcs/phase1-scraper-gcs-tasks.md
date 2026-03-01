@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS -- Task Checklist
 
-**Last Updated: 2026-02-28 (session 6)**
+**Last Updated: 2026-03-01 (session 7)**
 
 ---
 
@@ -8,9 +8,9 @@
 
 All code, tests, GCP setup, and docId config complete.
 
-## Task 10: Real Download & Integration -- REWRITE IN PROGRESS
+## Task 10: Real Download & Integration
 
-### 10a: Old approach (dead end)
+### 10a: Old approach (dead end) -- DONE
 - [x] Scraper runs end-to-end (auth -> CSRF -> download loop -> manifest)
 - [x] 26/26 docs downloaded for CO273_534 (disclaimers only)
 - [x] User captured real endpoints via Chrome DevTools
@@ -21,14 +21,14 @@ All code, tests, GCP setup, and docId config complete.
 - [x] **DEAD END CONFIRMED**: pdfGenerator/html always returns disclaimers
 - [x] **DEAD END CONFIRMED**: retrieve.do returns no `<body>` (JSP crash)
 
-### 10b: dviViewer API discovery (session 5 breakthrough)
+### 10b: dviViewer API discovery -- DONE (session 5)
 - [x] Investigated DOM, network requests, JS code in Selenium
 - [x] Found `dviViewer/getDviDocument` API returns 311KB JSON with all data
 - [x] Confirmed works with both Selenium XHR and requests library
 - [x] Parsed JSON: 53 pages imageList, 106 pdfRecordIds, 51 pages OCR text
 - [x] Saved sample response: `pdfs/_test/documents/dvi_response_requests.json`
 
-### 10c: Rewrite scraper for dviViewer approach -- DONE (prior sessions)
+### 10c: Rewrite scraper for dviViewer approach -- DONE
 - [x] Add `DVI_DOCUMENT_URL` constant to `src/config.py`
 - [x] Add `get_document_data()` to `src/scraper.py` -- calls dviViewer API, returns parsed JSON
 - [x] Add `download_document_pages()` -- downloads all page images using recordId tokens
@@ -43,7 +43,17 @@ All code, tests, GCP setup, and docId config complete.
 - [x] Create .venv and install all dependencies
 - [x] Update CLAUDE.md with PowerShell activation command
 
-### 10d: Test and download all volumes -- NEXT
+### 10c-perf: Concurrent downloads -- PLAN WRITTEN, NOT IMPLEMENTED
+Plan: `docs/plans/2026-03-01-concurrent-downloads.md`
+User chose: multi-agent team execution (subagent-driven)
+
+- [ ] Task 1: Add `MAX_WORKERS=5` to config, reduce `DOWNLOAD_DELAY` to 0.5s
+- [ ] Task 2: Extract `_download_single_page()` helper + tests
+- [ ] Task 3: Rewrite `download_document_pages()` with `ThreadPoolExecutor`
+- [ ] Task 4: Remove per-page `time.sleep(0.3)`, verify no stale sleeps
+- [ ] Task 5: Add `--workers` CLI flag to `scripts/run.py`
+
+### 10d: Test and download all volumes -- NEXT (after concurrent downloads)
 - [ ] Run `python -m scripts.run test` to verify scraper works with NUS SSO
 - [ ] Delete old pdfs/CO273_534/ disclaimer files
 - [ ] Download CO273_534 (26 docs)
@@ -79,6 +89,7 @@ All code, tests, GCP setup, and docId config complete.
 | dviViewer API Discovery | Done (session 5) |
 | Scraper Rewrite | Done |
 | Environment Setup | Done (session 6) |
-| Test Scraper | **NEXT**: `python -m scripts.run test` |
+| Concurrent Downloads | **Plan written** (session 7), not implemented |
+| Test Scraper | Blocked by concurrent downloads impl |
 | Download All Volumes | Blocked by test |
 | Build + Upload | Blocked by download |

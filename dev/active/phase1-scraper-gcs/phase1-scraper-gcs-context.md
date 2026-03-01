@@ -1,6 +1,6 @@
 # Phase 1: Scraper + GCS -- Key Context
 
-**Last Updated: 2026-02-28 (session 6 -- environment setup + scraper rewrite DONE)**
+**Last Updated: 2026-03-01 (session 7 -- concurrent downloads plan written)**
 
 ---
 
@@ -53,13 +53,44 @@ The dviViewer API works from both Selenium XHR and Python `requests` with sessio
 | File | Purpose | Status |
 |------|---------|--------|
 | `data/volumes.json` | All 52 docIds by volume (data-driven) | Committed |
-| `src/config.py` | `load_volumes()` reads JSON, endpoints | Committed |
+| `src/config.py` | `load_volumes()` reads JSON, endpoints, scraper constants | Committed |
 | `src/scraper.py` | dviViewer API scraper (rewritten session 6) | Committed |
 | `src/auth.py` | NUS SSO auth, polls for JSESSIONID11_omni | Committed |
 | `scripts/run.py` | CLI with scrape/build/upload/test commands | Committed |
 | `src/pdf_builder.py` | pypdf merge | Committed |
 | `src/gcs_upload.py` | GCS upload | Committed |
 | `pdfs/_test/documents/dvi_response_requests.json` | Sample 311KB API response | Local only |
+
+---
+
+## Session 7: Concurrent Downloads Plan (2026-03-01)
+
+### Problem
+Sequential page downloads take ~60 minutes for 2,738 pages:
+- 0.3s sleep per page = 14 min of sleeping
+- ~1s network per page = 46 min of I/O
+- 1.5s between 52 documents = 78s
+
+### Solution: Plan Written
+**Plan file: `docs/plans/2026-03-01-concurrent-downloads.md`**
+
+5 tasks:
+1. Add `MAX_WORKERS=5` to config, reduce `DOWNLOAD_DELAY` from 1.5s to 0.5s
+2. Extract `_download_single_page()` helper from `download_document_pages()`
+3. Rewrite `download_document_pages()` with `ThreadPoolExecutor(max_workers=5)`
+4. Remove per-page `time.sleep(0.3)` (concurrency provides natural throttling)
+5. Add `--workers` CLI flag to `scripts/run.py`
+
+Expected speedup: ~60 min -> ~10 min (6x faster)
+
+### User chose: Subagent-driven execution (multi-agent team)
+The plan has NOT been implemented yet. User requested multi-agent team execution.
+
+### Key design decisions
+- `requests.Session` is thread-safe -- safe to share across ThreadPoolExecutor workers
+- `_download_single_page()` returns bool (True=success/skip, False=fail) -- composable with futures
+- `max_workers` parameter defaults to `MAX_WORKERS` from config but can be overridden via CLI `--workers`
+- No async rewrite needed -- ThreadPoolExecutor is sufficient for I/O-bound downloads
 
 ---
 
@@ -73,13 +104,14 @@ The dviViewer API works from both Selenium XHR and Python `requests` with sessio
 
 ---
 
-## New Architecture (To Implement)
+## Architecture
 
 ```
 NUS SSO (Selenium) -> extract cookies -> requests.Session
     -> GET /ps/dviViewer/getDviDocument?docId=...  (JSON with page tokens)
-    -> for each page in imageList:
-         GET {IMAGE_DOWNLOAD_URL}/{recordId}  -> page_NNNN.jpg
+    -> ThreadPoolExecutor(max_workers=5):
+         for each page in imageList:
+           GET {IMAGE_DOWNLOAD_URL}/{recordId}  -> page_NNNN.jpg
     -> Extract OCR text from pageOcrTextMap  -> save as .txt
     -> manifest.json tracks progress per volume
 ```
@@ -118,18 +150,11 @@ NUS SSO (Selenium) -> extract cookies -> requests.Session
 
 ---
 
-## Session 6 Changes (This Session)
-
-1. **Python environment fixed**: Installed Python 3.14.3 from python.org, removed broken Microsoft Store version
-2. **PATH issues resolved**: Added Python to Git Bash `~/.bashrc` and Cursor `settings.json` (`terminal.integrated.env.windows`)
-3. **Venv created**: `.venv` with all project dependencies installed
-4. **CLAUDE.md updated**: Added PowerShell activation command for Cursor terminal
-5. **Scraper rewrite already done** (prior sessions): `src/scraper.py` has `get_document_data()`, `download_document_pages()`, `save_ocr_text()`, `scrape_volume()`
-
 ## Next Steps
 
-1. **Test the scraper**: `python -m scripts.run test` (downloads 3 pages from one doc via NUS SSO)
-2. If test passes, run full scrape: `python -m scripts.run scrape --resume`
-3. Build PDFs: `python -m scripts.run build`
-4. Upload to GCS: `python -m scripts.run upload`
-5. Get Gemini API key for Phase 2 OCR
+1. **Implement concurrent downloads**: Execute `docs/plans/2026-03-01-concurrent-downloads.md` (5 tasks, multi-agent team)
+2. **Test the scraper**: `python -m scripts.run test` (downloads 3 pages from one doc via NUS SSO)
+3. If test passes, run full scrape: `python -m scripts.run scrape --resume --workers 5`
+4. Build PDFs: `python -m scripts.run build`
+5. Upload to GCS: `python -m scripts.run upload`
+6. Get Gemini API key for Phase 2 OCR
