@@ -139,3 +139,40 @@ async def test_run_ocr_pipeline_per_doc_subdirs(tmp_path):
     # Metadata includes source_document
     meta = json.loads((ocr_dir / "GALE_AAA111" / "page_0001.json").read_text())
     assert meta["source_document"] == "GALE_AAA111"
+
+
+@pytest.mark.asyncio
+async def test_run_ocr_pipeline_with_correction(tmp_path):
+    """Pipeline runs post-correction when correct=True."""
+    volume_dir = tmp_path / "CO273_534"
+    images_dir = volume_dir / "images" / "GALE_AAA111"
+    images_dir.mkdir(parents=True)
+    img = Image.new("RGB", (100, 100))
+    img.save(images_dir / "page_0001.jpg")
+
+    mock_model = MagicMock()
+    # First call: OCR
+    # Second call: correction
+    ocr_response = MagicMock()
+    ocr_response.text = "Tle Governor"
+    correct_response = MagicMock()
+    correct_response.text = "The Governor"
+    mock_model.generate_content_async = AsyncMock(
+        side_effect=[ocr_response, correct_response]
+    )
+
+    with patch("src.ocr.pipeline.get_gemini_model", return_value=mock_model):
+        result = await run_ocr_pipeline(
+            volume_dir=volume_dir,
+            volume_id="CO273_534",
+            concurrency=1,
+            correct=True,
+        )
+
+    assert len(result["completed_pages"]) == 1
+
+    ocr_dir = volume_dir / "ocr" / "GALE_AAA111"
+    # Corrected text is in .txt
+    assert (ocr_dir / "page_0001.txt").read_text(encoding="utf-8") == "The Governor"
+    # Raw backup exists
+    assert (ocr_dir / "page_0001.raw.txt").exists()

@@ -8,6 +8,7 @@ import asyncio
 from pathlib import Path
 
 from src.ocr.config import GEMINI_API_KEY, GEMINI_MODEL, OCR_CONCURRENCY, OCR_MAX_RETRIES, OCR_RETRY_BACKOFF
+from src.ocr.correct import correct_single_page
 from src.ocr.gemini_ocr import ocr_single_page
 from src.ocr.manifest import load_ocr_manifest, save_ocr_manifest, update_manifest_page
 
@@ -105,10 +106,21 @@ async def _ocr_with_retry(
         print(f"  [{volume_id}] {page_key} FAILED after {OCR_MAX_RETRIES} attempts")
 
 
+async def _correct_with_semaphore(
+    semaphore: asyncio.Semaphore,
+    model,
+    txt_path: Path,
+) -> None:
+    """Run correction on a single page with concurrency control."""
+    async with semaphore:
+        await correct_single_page(model, txt_path)
+
+
 async def run_ocr_pipeline(
     volume_dir: Path,
     volume_id: str,
     concurrency: int = OCR_CONCURRENCY,
+    correct: bool = False,
 ) -> dict:
     """Run OCR pipeline on all page images in a volume directory.
 
@@ -169,6 +181,20 @@ async def run_ocr_pipeline(
     ]
 
     await asyncio.gather(*tasks)
+
+    # Post-correction pass (optional)
+    if correct:
+        print(f"[{volume_id}] Running post-correction pass...")
+        ocr_files = sorted(ocr_dir.rglob("page_*.txt"))
+        # Exclude .raw.txt backups
+        ocr_files = [f for f in ocr_files if not f.name.endswith(".raw.txt")]
+
+        correction_tasks = [
+            _correct_with_semaphore(semaphore, model, txt_path)
+            for txt_path in ocr_files
+        ]
+        await asyncio.gather(*correction_tasks)
+        print(f"[{volume_id}] Correction complete")
 
     save_ocr_manifest(manifest_path, manifest)
     completed = len(manifest["completed_pages"])
