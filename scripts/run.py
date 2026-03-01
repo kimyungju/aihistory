@@ -43,6 +43,7 @@ def cmd_scrape(args):
             doc_ids=vol_config["doc_ids"],
             output_dir=DOWNLOAD_DIR,
             resume=args.resume,
+            max_workers=args.workers,
         )
 
     print("\n=== Scraping complete ===")
@@ -161,6 +162,7 @@ def main():
     sp_scrape = subparsers.add_parser("scrape", help="Auth + download documents")
     sp_scrape.add_argument("--resume", action="store_true", help="Resume interrupted download")
     sp_scrape.add_argument("--volume", type=str, help="Scrape only this volume (e.g., CO273_534)")
+    sp_scrape.add_argument("--workers", type=int, default=None, help="Concurrent download workers (default: 5)")
     sp_scrape.set_defaults(func=cmd_scrape)
 
     # build
@@ -181,6 +183,7 @@ def main():
     sp_all = subparsers.add_parser("all", help="Full pipeline")
     sp_all.add_argument("--resume", action="store_true", help="Resume interrupted download")
     sp_all.add_argument("--volume", type=str, help="Process only this volume")
+    sp_all.add_argument("--workers", type=int, default=None, help="Concurrent download workers (default: 5)")
     sp_all.set_defaults(func=cmd_all)
 
     args = parser.parse_args()

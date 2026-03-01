@@ -290,6 +290,7 @@ def scrape_volume(
     doc_ids: list[str],
     output_dir: Path,
     resume: bool = True,
+    max_workers: int | None = None,
 ) -> dict:
     """Download all documents for a volume using the dviViewer API.
 
@@ -342,7 +343,7 @@ def scrape_volume(
 
             # Step 2: Download page images
             doc_images_dir = images_dir / safe_id
-            pages = download_document_pages(session, doc_data, doc_images_dir)
+            pages = download_document_pages(session, doc_data, doc_images_dir, max_workers=max_workers)
             print(f"    {pages}/{len(image_list)} page images downloaded")
 
             # Step 3: Extract OCR text
