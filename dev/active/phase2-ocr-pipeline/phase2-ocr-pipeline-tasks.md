@@ -1,10 +1,10 @@
 # Phase 2: Enhanced OCR Pipeline — Task Checklist
 
-**Last Updated: 2026-02-28 (session 4)**
+**Last Updated: 2026-03-01 (session 8)**
 
 ---
 
-## All Tasks Complete ✅
+## Base Pipeline (9/9) ✅
 
 ### Phase A: Foundation ✅
 - Task 1: Dependencies (257ee04) ✅
@@ -23,18 +23,41 @@
 
 ---
 
+## OCR Enhancement (10/10) ✅
+
+Plan: `docs/plans/2026-03-01-ocr-enhancement.md`
+
+### Phase 1: Parallel tracks (Track A/B/C)
+- Task 1: Path structure fix -- pipeline traverses per-doc subdirs (78813d5) ✅ Track A
+- Task 2: Prompt variants -- general/tabular/handwritten in OCR_PROMPTS (78813d5) ✅ Track B
+- Task 3: jiwer dependency added to pyproject.toml (78813d5) ✅ Track C
+- Task 4: Evaluation script -- WER/CER via evaluate.py (78813d5) ✅ Track C
+- Task 5: Evaluate CLI subcommand (78813d5) ✅ Track C
+- Task 6: Post-correction module -- correct.py with .raw.txt backup (78813d5) ✅ Track B
+
+### Phase 2: Integration
+- Task 7: Wire --correct flag into pipeline (e90462a) ✅
+- Task 8: --prompt CLI flag for variant selection (0cc833d) ✅
+- Task 9: A/B testing script -- ab_test_prompts.py (6d717ff) ✅
+- Task 10: Full verification -- 54/54 tests passing ✅
+
+### Deferred
+- Gold-standard test set curation (needs real data first)
+- Automatic prompt detection per page type (printed/tabular/handwritten)
+
+### Next
+- Obtain GEMINI_API_KEY and add to .env
+- Run scraper with NUS SSO to get real data
+- Test OCR on real colonial documents
+
+---
+
 ## Summary
 
-| Task | Effort | Owner | Status |
-|------|--------|-------|--------|
-| 1. Dependencies | S | Team Lead | ✅ |
-| 2. OCR Config | S | Team Lead | ✅ |
-| 3. PDF Extract | M | Agent 1 | ✅ |
-| 4. Gemini OCR | M | Agent 2 | ✅ |
-| 5. Manifest | S | Agent 1 | ✅ |
-| 6. Pipeline | L | Agent 2 | ✅ |
-| 7. CLI | S | Team Lead | ✅ |
-| 8. Smoke Test | S | Team Lead | ✅ |
-| 9. GCS Integration | M | Agent 2 | ✅ |
+| Phase | Tasks | Status |
+|-------|-------|--------|
+| Base Pipeline | 9/9 | ✅ DONE |
+| OCR Enhancement | 10/10 | ✅ DONE |
+| **Total** | **19/19** | **All complete** |
 
-**Total: 9/9 tasks complete. Phase 2 is DONE.**
+**54 tests passing (excluding test_gcs_upload.py due to Python 3.14 protobuf issue).**
