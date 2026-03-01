@@ -79,6 +79,7 @@ def cmd_ocr(args):
             volume_id=volume_id,
             concurrency=args.concurrency,
             correct=getattr(args, 'correct', False),
+            prompt_key=getattr(args, 'prompt', 'general'),
         ))
 
         if not getattr(args, 'local', False):
@@ -146,6 +147,9 @@ def main():
     sp_ocr.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
     sp_ocr.add_argument("--local", action="store_true", help="Use local files instead of GCS")
     sp_ocr.add_argument("--correct", action="store_true", help="Run post-correction pass after OCR")
+    sp_ocr.add_argument("--prompt", type=str, default="general",
+                        choices=["general", "tabular", "handwritten"],
+                        help="OCR prompt variant (default: general)")
     sp_ocr.set_defaults(func=cmd_ocr)
 
     # all
@@ -154,6 +158,9 @@ def main():
     sp_all.add_argument("--concurrency", type=int, default=20, help="Max concurrent requests")
     sp_all.add_argument("--local", action="store_true", help="Use local files instead of GCS")
     sp_all.add_argument("--correct", action="store_true", help="Run post-correction pass after OCR")
+    sp_all.add_argument("--prompt", type=str, default="general",
+                        choices=["general", "tabular", "handwritten"],
+                        help="OCR prompt variant (default: general)")
     sp_all.set_defaults(func=cmd_all)
 
     # evaluate

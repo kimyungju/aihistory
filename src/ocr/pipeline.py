@@ -72,6 +72,7 @@ async def _ocr_with_retry(
     manifest: dict,
     manifest_path: Path,
     page_key: str = "",
+    prompt_key: str = "general",
 ) -> None:
     """OCR a single page with retries and concurrency control."""
     if not page_key:
@@ -87,6 +88,7 @@ async def _ocr_with_retry(
                 volume_id=volume_id,
                 source_document=source_document,
                 output_dir=output_dir,
+                prompt_key=prompt_key,
             )
             if success:
                 update_manifest_page(manifest, page_key, success=True)
@@ -121,6 +123,7 @@ async def run_ocr_pipeline(
     volume_id: str,
     concurrency: int = OCR_CONCURRENCY,
     correct: bool = False,
+    prompt_key: str = "general",
 ) -> dict:
     """Run OCR pipeline on all page images in a volume directory.
 
@@ -176,6 +179,7 @@ async def run_ocr_pipeline(
             manifest=manifest,
             manifest_path=manifest_path,
             page_key=entry["page_key"],
+            prompt_key=prompt_key,
         )
         for entry in pages_to_process
     ]
