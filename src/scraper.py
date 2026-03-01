@@ -159,16 +159,16 @@ def _download_single_page(
     output_dir: Path,
 ) -> bool:
     """Download a single page image. Returns True on success or skip."""
-    page_num = int(page_info["pageNumber"])
-    record_id = page_info["recordId"]
-    filename = f"page_{page_num:04d}.jpg"
-    filepath = output_dir / filename
-
-    # Skip if already downloaded
-    if filepath.exists() and filepath.stat().st_size > 1000:
-        return True
-
     try:
+        page_num = int(page_info["pageNumber"])
+        record_id = page_info["recordId"]
+        filename = f"page_{page_num:04d}.jpg"
+        filepath = output_dir / filename
+
+        # Skip if already downloaded
+        if filepath.exists() and filepath.stat().st_size > 1000:
+            return True
+
         url = f"{IMAGE_DOWNLOAD_URL}/{record_id}"
         params = {"legacy": "no", "scale": "1.0", "format": "jpeg"}
         response = session.get(url, params=params, timeout=REQUEST_TIMEOUT)
@@ -183,7 +183,7 @@ def _download_single_page(
         return True
 
     except Exception as e:
-        print(f"    Failed page {page_num}: {e}")
+        print(f"    Failed page download: {e}")
         return False
 
 
@@ -196,7 +196,8 @@ def download_document_pages(
     """Download all page images concurrently using recordId tokens.
 
     Uses ThreadPoolExecutor for parallel downloads. requests.Session is
-    thread-safe so the same session is shared across workers.
+    not officially thread-safe, but concurrent read-only GETs with a
+    stable cookie jar work in practice with urllib3's internal locking.
 
     Returns the number of pages successfully downloaded or skipped.
     """
