@@ -1,5 +1,7 @@
 # Concurrent Downloads Implementation Plan
 
+**Status**: COMPLETE (5/5 tasks, 2026-03-01). Committed as `9ec2532`..`ca155a1`.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Speed up page image downloads from ~60 minutes to ~10 minutes using concurrent requests.

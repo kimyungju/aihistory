@@ -1,5 +1,7 @@
 # OCR Enhancement Implementation Plan
 
+**Status**: COMPLETE (10/10 tasks, 2026-03-01). 54/54 tests passing.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Enhance the existing Phase 2 OCR pipeline with per-document path alignment, tuned prompt variants for colonial documents, WER/CER evaluation against Gale baseline, and an optional post-correction pass.

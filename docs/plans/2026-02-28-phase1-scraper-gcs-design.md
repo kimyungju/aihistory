@@ -1,5 +1,7 @@
 # Phase 1 Design: Gale PDF Scraper + GCS Upload
 
+**Status**: IMPLEMENTED. See also [download fix](2026-02-28-fix-download-unblock-pipeline.md) for dviViewer API pivot.
+
 **Date**: 2026-02-28
 **Project**: aihistory — "New Kratoska Index" for CO 273 Colonial Records
 **Phase**: 1 of 4 (Scraper + GCS Upload)

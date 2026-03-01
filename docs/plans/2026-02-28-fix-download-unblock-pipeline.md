@@ -1,5 +1,7 @@
 # Fix Download & Unblock Pipeline Implementation Plan
 
+**Status**: COMPLETE. dviViewer API approach is the production path.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Fix the Gale document download (disclaimers → real PDFs) by capturing the JSESSIONID11_omni cookie, clean up form data, add download validation, and add direct image download as an alternative path.

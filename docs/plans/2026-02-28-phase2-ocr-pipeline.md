@@ -1,5 +1,7 @@
 # Phase 2: Enhanced OCR Pipeline — Implementation Plan
 
+**Status**: COMPLETE (9/9 tasks, 2026-02-28). Extended by [OCR Enhancement Plan](2026-03-01-ocr-enhancement.md).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build an async pipeline that extracts page images from Phase 1's document PDFs in GCS, runs Gemini Vision OCR on each page, and writes enhanced text + metadata back to GCS with resume support.

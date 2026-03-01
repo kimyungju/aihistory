@@ -1,5 +1,7 @@
 # Phase 2 Design: Enhanced OCR Pipeline
 
+**Status**: IMPLEMENTED (2026-02-28). Superseded by [OCR Enhancement Plan](2026-03-01-ocr-enhancement.md) for prompt tuning, evaluation, and post-correction.
+
 **Date**: 2026-02-28
 **Project**: aihistory — "New Kratoska Index" for CO 273 Colonial Records
 **Phase**: 2 of 4 (Enhanced OCR)

@@ -1,5 +1,7 @@
 # GCP Setup + Real Download Test — Design
 
+**Status**: COMPLETE. GCP project `aihistory-488807`, bucket `aihistory-co273` configured.
+
 **Date**: 2026-02-28
 
 ## Task 9: GCP Setup

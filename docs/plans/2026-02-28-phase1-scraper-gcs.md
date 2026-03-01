@@ -1,5 +1,7 @@
 # Phase 1: Gale PDF Scraper + GCS Upload — Implementation Plan
 
+**Status**: COMPLETE. Superseded by [dviViewer API rewrite](2026-02-28-fix-download-unblock-pipeline.md) + [concurrent downloads](2026-03-01-concurrent-downloads.md).
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build a Python tool that authenticates to Gale Primary Sources via NUS SSO, downloads all page images for CO273/534 (1,436 pages) and CO273/550 (460 pages), assembles them into PDFs, and uploads to Google Cloud Storage.
